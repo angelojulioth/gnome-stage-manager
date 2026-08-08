@@ -1706,7 +1706,7 @@ test('_mergeApps key length stays bounded, not doubling per merge', () => {
 });
 
 test('_loadMergeMap repairs an already-corrupted key from an earlier version', () => {
-    // What v2.0.3 wrote: the composite key folded back into itself repeatedly.
+    // What v2.0.4 wrote: the composite key folded back into itself repeatedly.
     const corrupt = JSON.stringify({
         appA: 'appA|appA|appB|appB|appC',
         appB: 'appA|appA|appB|appB|appC',
