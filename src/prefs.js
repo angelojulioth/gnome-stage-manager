@@ -60,33 +60,41 @@ export default class StageManagerPreferences extends ExtensionPreferences {
         layoutSwitchRow.set_child(layoutBox);
         layoutGroup.add(layoutSwitchRow);
 
-        // Maximize to Workspace
         const maxGroup = new Adw.PreferencesGroup({
-            title: _('Maximize to Workspace'),
-            description: _('Move maximized windows to their own workspace'),
+            title: _('Maximize Behaviour'),
+            description: _('What happens when a window is maximized'),
         });
         behaviorPage.add(maxGroup);
 
-        const maxSwitch = new Adw.SwitchRow({
-            title: _('Enable Maximize to Workspace'),
-            subtitle: _('When maximized, window moves to a new empty workspace'),
+        // One enum instead of two switches: the old pair both answered "maximize"
+        // and one silently won, so the exclusion is now structural.
+        const maxRow = new Adw.ActionRow({
+            title: _('When a Window Is Maximized'),
+            subtitle: _('Unmaximizing always returns the window, whatever this is set to'),
         });
-        settings.bind('enable-maximize-to-workspace', maxSwitch, 'active', Gio.SettingsBindFlags.DEFAULT);
-        maxGroup.add(maxSwitch);
+        const maxKeys = ['none', 'workspace', 'stage'];
+        const maxLabels = [
+            _('Do nothing'),
+            _('Move it to a new workspace'),
+            _('Give it its own stage (Stack layout, Groups mode)'),
+        ];
+        const maxDropdown = new Gtk.DropDown({
+            model: Gtk.StringList.new(maxLabels),
+            valign: Gtk.Align.CENTER,
+        });
+        maxDropdown.set_selected(Math.max(0, maxKeys.indexOf(settings.get_string('maximize-behavior'))));
+        maxDropdown.connect('notify::selected', () => {
+            settings.set_string('maximize-behavior', maxKeys[maxDropdown.get_selected()] || 'none');
+        });
+        maxRow.add_suffix(maxDropdown);
+        maxGroup.add(maxRow);
 
         // Stage Sidebar
         const sideGroup = new Adw.PreferencesGroup({
             title: _('Stage Manager Sidebar'),
-            description: _('Left sidebar showing inactive app thumbnails'),
+            description: _('Thumbnail cards for your inactive stages, at the screen edge'),
         });
         behaviorPage.add(sideGroup);
-
-        const sideSwitch = new Adw.SwitchRow({
-            title: _('Enable Stage Sidebar'),
-            subtitle: _('Show inactive apps as thumbnail cards on the left'),
-        });
-        settings.bind('enable-stage-sidebar', sideSwitch, 'active', Gio.SettingsBindFlags.DEFAULT);
-        sideGroup.add(sideSwitch);
 
         // Arc always auto-hides (hover-only, no "always visible" mode) and
         // never reserves struts — both rows are Stack-only.
@@ -107,15 +115,14 @@ export default class StageManagerPreferences extends ExtensionPreferences {
         this._bindLayoutSensitivity(reserveSwitch, settings, 'stack');
 
         // Sidebar Content — what the Stack layout's cards show. Arc has no
-        // equivalent (it always groups by app and always shows one icon per
-        // stacked window), so this whole group is greyed out while
-        // sidebar-layout is 'arc' rather than left active-but-inert.
+        // equivalent (it always groups by app, one icon per stacked window), so
+        // the whole group is hidden rather than shown inert while layout is arc.
         const contentGroup = new Adw.PreferencesGroup({
             title: _('Sidebar Content'),
             description: _('Stack layout only'),
         });
         behaviorPage.add(contentGroup);
-        this._bindLayoutSensitivity(contentGroup, settings, 'stack');
+        this._bindLayoutVisibility(contentGroup, settings, 'stack');
 
         const modeRow = new Adw.ActionRow({
             title: _('Card Grouping'),
@@ -224,14 +231,14 @@ export default class StageManagerPreferences extends ExtensionPreferences {
             description: _('Stack layout only'),
         });
         lookPage.add(stackGroup);
-        this._bindLayoutSensitivity(stackGroup, settings, 'stack');
+        this._bindLayoutVisibility(stackGroup, settings, 'stack');
 
         const stackPosRow = new Adw.ActionRow({
             title: _('Panel Position'),
-            subtitle: _('Screen edge the stack sidebar attaches to'),
+            subtitle: _('Screen edge the stack sidebar attaches to. Bottom lays the cards out as a horizontal strip.'),
         });
-        const stackPosKeys = ['left', 'right'];
-        const stackPosLabels = [_('Left'), _('Right')];
+        const stackPosKeys = ['left', 'right', 'bottom'];
+        const stackPosLabels = [_('Left'), _('Right'), _('Bottom')];
         const stackPosDropdown = new Gtk.DropDown({
             model: Gtk.StringList.new(stackPosLabels),
             valign: Gtk.Align.CENTER,
@@ -251,7 +258,7 @@ export default class StageManagerPreferences extends ExtensionPreferences {
             description: _('Arc layout only'),
         });
         lookPage.add(arcGroup);
-        this._bindLayoutSensitivity(arcGroup, settings, 'arc');
+        this._bindLayoutVisibility(arcGroup, settings, 'arc');
 
         const arcPosRow = new Adw.ActionRow({
             title: _('Panel Position'),
@@ -290,7 +297,7 @@ export default class StageManagerPreferences extends ExtensionPreferences {
         // Arc has its own separate 'arc-card-scale' above and no perspective tilt.
         const cardGroup = new Adw.PreferencesGroup({ title: _('Cards'), description: _('Stack layout only') });
         lookPage.add(cardGroup);
-        this._bindLayoutSensitivity(cardGroup, settings, 'stack');
+        this._bindLayoutVisibility(cardGroup, settings, 'stack');
 
         this._addSpinRow(cardGroup, settings, 'card-base-scale',
             _('Card Base Scale'), _('Default card size percentage (40-100)'), 40, 100, 5);
@@ -399,6 +406,18 @@ export default class StageManagerPreferences extends ExtensionPreferences {
     _bindLayoutSensitivity(widget, settings, wantedLayout) {
         const update = () => {
             widget.sensitive = settings.get_string('sidebar-layout') === wantedLayout;
+        };
+        update();
+        const id = settings.connect('changed::sidebar-layout', update);
+        widget.connect('destroy', () => settings.disconnect(id));
+    }
+
+    /** For groups that belong entirely to one layout: hide rather than grey out,
+     *  so the page only ever shows the settings that actually apply. Mixed
+     *  groups keep _bindLayoutSensitivity so their inert rows stay discoverable. */
+    _bindLayoutVisibility(widget, settings, wantedLayout) {
+        const update = () => {
+            widget.visible = settings.get_string('sidebar-layout') === wantedLayout;
         };
         update();
         const id = settings.connect('changed::sidebar-layout', update);

@@ -2,7 +2,7 @@
 
 A macOS Stage Manager-like window management extension for GNOME Shell.
 
-Group windows into stages: only one group is visible at a time, others appear as stacked thumbnail cards in a left sidebar. Click a card to swap stages. Supports per-app mode, workspace mode, bell-curve hover animations, and 3D perspective.
+Group windows into stages: only one group is visible at a time, others appear as stacked thumbnail cards in a sidebar at the screen edge. Click a card to swap stages. Supports per-app mode, workspace mode, bell-curve hover animations, and 3D perspective.
 
 🎥 Demo: https://youtu.be/8fnFvYaxUMo
 
@@ -14,13 +14,13 @@ Group windows into stages: only one group is visible at a time, others appear as
 
 ## Features
 
-- **Stage Manager Groups** — Windows you use together stay grouped. Only the active group is visible; inactive groups appear as stacked thumbnail cards in a left sidebar.
+- **Stage Manager Groups** — Windows you use together stay grouped. Only the active group is visible; inactive groups appear as stacked thumbnail cards in a sidebar (left, right, or a bottom strip).
 - **One-Click Swap** — Click any sidebar card to swap stages: the active group minimizes, the clicked group comes to the foreground.
 - **4 Sidebar Modes** — Groups (Stage Manager swap), Apps (per-app focus), Workspaces (switch workspaces), All Windows (every window on every workspace).
 - **Arc Layout** — A full alternate sidebar mode (not just a variant of the stack): a stacked-paper carousel attached to the left, right, or bottom edge, with hover-to-fan reveal, momentum scrolling, drag-to-merge (drop a card outside the carousel to merge it into the focused app) and drag-to-reorder (drop inside), right-click to un-merge, an optional persistent mode, and its own keyboard shortcuts.
 - **Drag-to-Merge Apps** — In Apps mode (stack layout), drag one app card onto another to combine them into a single card; right-click a merged card to split it back apart. This is independent of Arc Layout's own merge system above — the two don't interact.
 - **Keyboard Shortcut** — Optional shortcut to reveal/hide the sidebar without moving the mouse to the screen edge. Set it in Preferences → Behavior → Shortcuts; it applies immediately.
-- **Maximize to Workspace** — Optionally move maximized windows to their own workspace (disabled by default).
+- **Maximize Behaviour** — Choose what maximizing a window does: nothing (default), move it to a new empty workspace, or give it a stage of its own with its former stage-mates parked as a card (Stack layout + Groups mode). Unmaximizing always returns the window.
 - **Bell-Curve Hover Animation** — Hovered card scales up smoothly; only 1-2 neighbors are affected (tight sigma).
 - **3D Perspective** — Cards have a configurable Y-axis rotation for a natural depth look, consistent direction for all cards.
 - **Stacked Thumbnails** — Groups with multiple windows show fanned-out card stacks with visible back layers, scaled so the stack always fits the sidebar.
@@ -112,8 +112,7 @@ Or click the gear icon in Extension Manager.
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| Enable Maximize to Workspace | Off | Maximized windows get their own workspace |
-| Enable Stage Sidebar | On | Show the left-side sidebar |
+| When a Window Is Maximized | Do nothing | Do nothing, move it to a new workspace, or give it its own stage (Stack layout + Groups mode) |
 | Sidebar Content | Groups | Groups (Stage Manager), Apps (per-app focus), Workspaces, or All Windows |
 | Auto-hide Sidebar | Off | Off = always visible (macOS default). On = hover to reveal |
 | Reserve Space for Sidebar | Off | Maximized windows stop at the sidebar instead of being covered (needs auto-hide off) |
@@ -121,6 +120,7 @@ Or click the gear icon in Extension Manager.
 | Show Window Count Badge | On | Show number of windows on group thumbnails |
 | Show Current Workspace | On | In workspace mode, also show the current workspace card |
 | Sidebar Layout | Stack | Stack (vertical list) or Arc (full carousel — see below) |
+| Stack Panel Position | Left | Screen edge the Stack sidebar attaches to: Left, Right, or Bottom (a horizontal strip) |
 | Arc Panel Position | Left | Screen edge the Arc carousel attaches to: Left, Right, or Bottom |
 | Persistent Mode (Arc) | Off | Keep the Arc carousel shown whenever no window overlaps its area |
 
@@ -128,8 +128,9 @@ Or click the gear icon in Extension Manager.
 
 | Setting | Default | Range | Description |
 |---------|---------|-------|-------------|
-| Sidebar Width | 220px | 120-400 | Width of the sidebar |
+| Sidebar Width | 220px | 120-400 | Thickness of the sidebar — its width on a side edge, its height on the bottom |
 | Edge Trigger Width | 4px | 1-20 | Hot zone at screen edge (pixels) |
+| Edge Trigger Delay | 250ms | 0-1000 | How long the pointer must rest on the edge before the sidebar opens (0 = instant) |
 | Arc Angle Step | 16° | 8-30 | Degrees between adjacent cards in Arc layout |
 | Card Base Scale | 70% | 40-100 | Default card size percentage |
 | Perspective Angle | 22° | 0-45 | 3D Y-axis rotation (0 = flat) |

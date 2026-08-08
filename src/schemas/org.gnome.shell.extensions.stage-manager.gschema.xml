@@ -3,16 +3,36 @@
     <schema id="org.gnome.shell.extensions.stage-manager"
             path="/org/gnome/shell/extensions/stage-manager/">
 
-        <key name="enable-maximize-to-workspace" type="b">
-            <default>false</default>
-            <summary>Enable Maximize to Workspace</summary>
-            <description>When a window is maximized, automatically move it to a new workspace. When unmaximized, return it to the previous workspace.</description>
+        <key name="maximize-behavior" type="s">
+            <default>'none'</default>
+            <choices>
+                <choice value="none"/>
+                <choice value="workspace"/>
+                <choice value="stage"/>
+            </choices>
+            <summary>Maximize Behaviour</summary>
+            <description>What happens when a window is maximized. "none" leaves it in place; "workspace" moves it to a new empty workspace; "stage" gives it a stage of its own on the current workspace (Stack layout, Groups mode). Unmaximizing always returns the window, whatever this is set to now.</description>
         </key>
 
-        <key name="enable-stage-sidebar" type="b">
-            <default>true</default>
-            <summary>Enable Stage Manager Sidebar</summary>
-            <description>Show a sidebar with inactive window thumbnails on the left side of the screen.</description>
+        <!-- Superseded by maximize-behavior; kept so an existing profile can be
+             migrated once on upgrade. Not shown in preferences. -->
+        <key name="enable-maximize-to-workspace" type="b">
+            <default>false</default>
+            <summary>Enable Maximize to Workspace (deprecated)</summary>
+            <description>Deprecated, replaced by maximize-behavior. Read only to migrate an existing setting.</description>
+        </key>
+
+        <!-- Superseded by maximize-behavior; see the note above. -->
+        <key name="maximize-to-new-group" type="b">
+            <default>false</default>
+            <summary>Enable Maximize to New Stage (deprecated)</summary>
+            <description>Deprecated, replaced by maximize-behavior. Read only to migrate an existing setting.</description>
+        </key>
+
+        <key name="maximize-migrated" type="b">
+            <default>false</default>
+            <summary>Maximize Settings Migrated</summary>
+            <description>Internal. Set once the two deprecated maximize switches have been folded into maximize-behavior, so the migration never runs twice.</description>
         </key>
 
         <key name="sidebar-width" type="i">
@@ -32,7 +52,7 @@
         <key name="sidebar-auto-hide" type="b">
             <default>false</default>
             <summary>Auto-hide Sidebar</summary>
-            <description>When off (default): the sidebar stays visible, drawn over your windows; the empty space around the cards passes clicks through to whatever is underneath. When on: the sidebar stays off screen and is revealed by moving the pointer to the left edge.</description>
+            <description>When off (default): the sidebar stays visible, drawn over your windows; the empty space around the cards passes clicks through to whatever is underneath. When on: the sidebar stays off screen and is revealed by moving the pointer to the screen edge it is attached to.</description>
         </key>
 
         <key name="show-on-empty-workspace" type="b">
@@ -140,9 +160,10 @@
             <choices>
                 <choice value="left"/>
                 <choice value="right"/>
+                <choice value="bottom"/>
             </choices>
             <summary>Stack Panel Position</summary>
-            <description>Screen edge the Stack sidebar is attached to.</description>
+            <description>Screen edge the Stack sidebar is attached to. On "bottom" the cards lay out as a horizontal strip and sidebar-width becomes the strip's height.</description>
         </key>
 
         <key name="arc-panel-position" type="s">

@@ -116,6 +116,7 @@ export const St = {
             // Modelled on St: a scrollable range only exists when the policy
             // permits scrolling in that direction.
             this.vadjustment = { value: 0, upper: 0, page_size: 0 };
+            this.hadjustment = { value: 0, upper: 0, page_size: 0 };
         }
         set_child(c) { this.child = c; this.add_child(c); }
         /**
@@ -127,6 +128,12 @@ export const St = {
             const scrollable = this.vscrollbar_policy !== St.PolicyType.NEVER;
             this.vadjustment.page_size = viewportH;
             this.vadjustment.upper = scrollable ? contentH : viewportH;
+        }
+        /** Same, for the horizontal axis a bottom strip scrolls on. */
+        setContentWidth(contentW, viewportW) {
+            const scrollable = this.hscrollbar_policy !== St.PolicyType.NEVER;
+            this.hadjustment.page_size = viewportW;
+            this.hadjustment.upper = scrollable ? contentW : viewportW;
         }
     },
     Label: class Label extends FakeActor {},
@@ -400,8 +407,10 @@ export const ngettext = (s, plural, n) => (n === 1 ? s : plural);
 /* ── GSettings fake ──────────────────────────────────────────────────── */
 
 const DEFAULTS = {
-    'enable-maximize-to-workspace': true,
-    'enable-stage-sidebar': true,
+    'maximize-behavior': 'workspace',
+    'maximize-migrated': true,
+    'enable-maximize-to-workspace': true,   // deprecated, read only by the migration
+    'maximize-to-new-group': false,         // deprecated, read only by the migration
     'sidebar-width': 220,
     'animation-duration': 250,
     'sidebar-auto-hide': false,
@@ -420,6 +429,7 @@ const DEFAULTS = {
     'arc-angle-step': 16,
     'sidebar-layout': 'stack',
     'app-merge-map': '{}',
+    'stack-panel-position': 'left',
     'arc-panel-position': 'left',
     'arc-persistent-mode': false,
     'arc-card-scale': 100,

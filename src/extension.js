@@ -25,8 +25,9 @@ const STACK_V = 4;    // vertical offset at THUMB_W; scaled proportionally
 // Safety floor only; must stay below the narrowest fit the settings allow (~57px)
 // or it fights _thumbSize()'s own fit.
 const MIN_THUMB_W = 48;
-// Must match .stage-card's horizontal padding in stylesheet.css, or cards overflow.
+// Must match .stage-card's padding in stylesheet.css (8px 14px), or cards overflow.
 const CARD_PAD_X = 14;
+const CARD_PAD_Y = 8;
 const CARD_MARGIN = 8;    // breathing room between the card and the panel edges
 const SCROLL_STEP = 55;   // wheel travel per notch
 const PERSP_HEADROOM = 0.18;   // extra width to budget for a rotated card's projection
@@ -160,7 +161,6 @@ class MaximizeToWorkspace {
         this._sigSources.add(o);
     }
 
-    /** Drop a fired timer from tracking without disturbing the others. */
     /** Drop an id from this._timers once its source is gone. Every timeout is
      *  pushed to that array at creation so disable() can loop over the rest. */
     _untrackTimer(id) {
@@ -184,8 +184,8 @@ class MaximizeToWorkspace {
 
         if (change === Meta.SizeChange.MAXIMIZE) {
             // Only the outbound move is opt-in — a window already parked must
-            // still be able to return even if the setting was since disabled.
-            if (!this._settings.get_boolean('enable-maximize-to-workspace')) return;
+            // still be able to return even if the setting was since changed.
+            if (this._settings.get_string('maximize-behavior') !== 'workspace') return;
             this._handleMaximize(win);
         } else if (change === Meta.SizeChange.UNMAXIMIZE) {
             this._handleUnmaximize(win);
@@ -304,6 +304,10 @@ class StageSidebar {
 
         this._appMergeMap = new Map();   // appId -> resolved merge-group key, see _groupByApp
         this._appDrag = null;            // in-flight drag-to-merge candidate, see _startAppDragCandidate
+
+        // win → group id it was promoted out of by maximize-behavior='stage',
+        // so unmaximize can put it back instead of stranding it in a lone stage.
+        this._maxOrigin = new Map();
     }
 
     // ── Signal & timer tracking ─────────────────────────────────────────
@@ -337,26 +341,47 @@ class StageSidebar {
     get _BASE_SCALE() { return this._settings.get_int('card-base-scale') / 100.0; }
     get _PERSP_ANGLE() { return this._settings.get_int('perspective-angle'); }
     get _POS() { return this._settings.get_string('stack-panel-position'); }
+    /** Left/right stack the cards in a column; bottom lays them in a row.
+     *  Everything position-dependent branches on this, not on _POS. */
+    get _VERTICAL() { return this._POS !== 'bottom'; }
     /** Perspective tilt direction — mirrored on the right so cards still
      *  face into the screen instead of away from it. */
     get _ROT_SIGN() { return this._POS === 'right' ? -1 : 1; }
 
-    // ── Position-aware geometry (left = default, right = mirrored) ──
-    _panelVisibleX(mon) {
-        return this._POS === 'right' ? mon.x + mon.width - this._PANEL_W : mon.x;
+    // ── Position-aware geometry (left = default; right mirrors, bottom rotates).
+    // sidebar-width is the panel's THICKNESS on whichever edge it occupies. ──
+    _panelSize(mon, topH) {
+        return this._VERTICAL
+            ? [this._PANEL_W, mon.height - topH]
+            : [mon.width, this._PANEL_W];
     }
-    _panelHiddenX(mon) {
-        return this._POS === 'right' ? mon.x + mon.width : mon.x - this._PANEL_W;
+    _panelVisiblePos(mon, topH) {
+        if (!this._VERTICAL) return [mon.x, mon.y + mon.height - this._PANEL_W];
+        return [this._POS === 'right' ? mon.x + mon.width - this._PANEL_W : mon.x, mon.y + topH];
     }
-    _edgeX(mon) {
-        return this._POS === 'right' ? mon.x + mon.width - this._EDGE_W : mon.x;
+    _panelHiddenPos(mon, topH) {
+        if (!this._VERTICAL) return [mon.x, mon.y + mon.height];
+        return [this._POS === 'right' ? mon.x + mon.width : mon.x - this._PANEL_W, mon.y + topH];
     }
-    /** Preview floats on the side of the sidebar that faces the screen's
-     *  interior — to its left when the sidebar itself is on the right. */
-    _previewX(mon, previewW, gap) {
-        return this._POS === 'right'
+    /** [x, y, w, h] of the edge trigger strip. */
+    _edgeGeom(mon, topH) {
+        const t = this._EDGE_W;
+        return this._VERTICAL
+            ? [this._POS === 'right' ? mon.x + mon.width - t : mon.x, mon.y + topH, t, mon.height - topH]
+            : [mon.x, mon.y + mon.height - t, mon.width, t];
+    }
+    /** Preview floats on the panel's inward-facing side, tracking the card. */
+    _previewPos(mon, topH, previewW, previewH, gap, cardX, cardY) {
+        if (!this._VERTICAL) {
+            const x = Math.max(mon.x + gap,
+                Math.min(cardX, mon.x + mon.width - previewW - gap));
+            return [x, mon.y + mon.height - this._PANEL_W - previewH - gap];
+        }
+        const x = this._POS === 'right'
             ? mon.x + mon.width - this._PANEL_W - previewW - gap
             : mon.x + this._PANEL_W + gap;
+        return [x, Math.max(mon.y + topH + gap,
+            Math.min(cardY, mon.y + mon.height - previewH - 20 * this._scaleFactor))];
     }
 
     enable() {
@@ -401,6 +426,7 @@ class StageSidebar {
         this._expectUnminimize.clear();
         this._snapshots.clear();
         this._appMergeMap.clear();
+        this._maxOrigin.clear();
         this._signature = null;
         // Explicit destroy for every actor created in _build() (EGO-L-002).
         // Destroy children before parents so set_child(null) calls don't dangle.
@@ -429,9 +455,9 @@ class StageSidebar {
     _build() {
         const mon = _getMon();
         const topH = Main.panel ? Main.panel.height : 0;
-        const panelW = this._PANEL_W;
-        const edgeW = this._EDGE_W;
-        const panelH = mon.height - topH;
+        const vertical = this._VERTICAL;
+        const [panelW, panelH] = this._panelSize(mon, topH);
+        const [edgeX, edgeY, edgeW, edgeH] = this._edgeGeom(mon, topH);
 
         // Edge trigger — reactive by necessity, kept hidden except when needed
         // (_syncEdge), or it eats clicks/resize-grabs along the screen edge.
@@ -439,8 +465,8 @@ class StageSidebar {
             reactive: true,
             style: 'background-color: transparent;',
         });
-        this._edge.set_size(edgeW, panelH);
-        this._edge.set_position(this._edgeX(mon), mon.y + topH);
+        this._edge.set_size(edgeW, edgeH);
+        this._edge.set_position(edgeX, edgeY);
         Main.layoutManager.addChrome(this._edge, { trackFullscreen: false });
         this._sig(this._edge, 'enter-event', () => {
             if (this._fullscreen()) return;
@@ -470,18 +496,19 @@ class StageSidebar {
             style: 'background-color: transparent;',
         });
         this._panel.set_size(panelW, panelH);
-        this._panel.set_position(this._panelHiddenX(mon), mon.y + topH);
+        this._panel.set_position(...this._panelHiddenPos(mon, topH));
         this._visible = false;
         this._applyChrome();
 
-        // ScrollView → BoxLayout
+        // ScrollView → BoxLayout. EXTERNAL, not NEVER, on the scrolling axis —
+        // NEVER gives the adjustment no range, so scrolling could never move it.
+        // EXTERNAL keeps the range and just hides the bar. The axis follows the
+        // edge: a bottom strip scrolls horizontally, a side column vertically.
         this._scroll = new St.ScrollView({
             reactive: false,
             overlay_scrollbars: true,
-            hscrollbar_policy: St.PolicyType.NEVER,
-            // EXTERNAL, not NEVER — NEVER gives the adjustment no range, so
-            // scrolling could never move it. EXTERNAL keeps the range, just hides the bar.
-            vscrollbar_policy: St.PolicyType.EXTERNAL,
+            hscrollbar_policy: vertical ? St.PolicyType.NEVER : St.PolicyType.EXTERNAL,
+            vscrollbar_policy: vertical ? St.PolicyType.EXTERNAL : St.PolicyType.NEVER,
             clip_to_allocation: true,
         });
         this._scroll.set_size(panelW, panelH);
@@ -492,11 +519,13 @@ class StageSidebar {
         // smallest region that fixes scrolling without swallowing clicks elsewhere.
         this._box = new St.BoxLayout({
             reactive: true,
-            x_align: Clutter.ActorAlign.CENTER,
-            y_align: Clutter.ActorAlign.START,
-            style: `padding: ${Math.round(24 * sf)}px 0px; spacing: ${Math.round(10 * sf)}px;`,
+            x_align: vertical ? Clutter.ActorAlign.CENTER : Clutter.ActorAlign.START,
+            y_align: vertical ? Clutter.ActorAlign.START : Clutter.ActorAlign.CENTER,
+            style: vertical
+                ? `padding: ${Math.round(24 * sf)}px 0px; spacing: ${Math.round(10 * sf)}px;`
+                : `padding: 0px ${Math.round(24 * sf)}px; spacing: ${Math.round(10 * sf)}px;`,
         });
-        this._setVertical(this._box);
+        this._setOrientation(this._box, vertical);
         this._scroll.set_child(this._box);
 
         // Bound on the column, on each card (_wireCardEvents) and on the scroll
@@ -532,7 +561,6 @@ class StageSidebar {
      *  geometry-based and can't animate, so only true while genuinely parked on screen. */
     _wantStruts() {
         return this._settings.get_boolean('sidebar-reserve-space') &&
-               this._settings.get_boolean('enable-stage-sidebar') &&
                !this._settings.get_boolean('sidebar-auto-hide') &&
                this._visible && !this._fullscreen();
     }
@@ -557,26 +585,36 @@ class StageSidebar {
     /** Scroll the card list. Bound on the scroll view and every card; EVENT_STOP
      *  from whichever fires first stops the other from moving the adjustment twice. */
     _onScrollEvent(event) {
-        const adj = this._scroll?.vadjustment;
+        // The scrolling axis follows the edge — a bottom strip scrolls its
+        // hadjustment, a side column its vadjustment.
+        const adj = this._VERTICAL ? this._scroll?.vadjustment : this._scroll?.hadjustment;
         if (!adj) return Clutter.EVENT_PROPAGATE;
 
         // Legacy mice only report a direction; get_scroll_delta() only means
         // something for SMOOTH, so branch on direction first, not probe it.
-        let dy = 0;
+        let delta = 0;
+        const vertical = this._VERTICAL;
         const dir = event.get_scroll_direction();
-        if (dir === Clutter.ScrollDirection.SMOOTH)
-            [, dy] = event.get_scroll_delta();
-        else if (dir === Clutter.ScrollDirection.UP)
-            dy = -1;
-        else if (dir === Clutter.ScrollDirection.DOWN)
-            dy = 1;
+        if (dir === Clutter.ScrollDirection.SMOOTH) {
+            const [dx, dy] = event.get_scroll_delta();
+            // A plain wheel reports only dy, so a bottom strip takes either axis.
+            delta = vertical ? dy : (dx || dy);
+        } else if (dir === Clutter.ScrollDirection.UP) {
+            delta = -1;
+        } else if (dir === Clutter.ScrollDirection.DOWN) {
+            delta = 1;
+        } else if (!vertical && dir === Clutter.ScrollDirection.LEFT) {
+            delta = -1;
+        } else if (!vertical && dir === Clutter.ScrollDirection.RIGHT) {
+            delta = 1;
+        }
         // A smooth-scroll gesture ends with a zero-delta event; let it through
         // instead of swallowing it.
-        if (dy === 0) return Clutter.EVENT_PROPAGATE;
+        if (delta === 0) return Clutter.EVENT_PROPAGATE;
 
         const step = SCROLL_STEP * this._scaleFactor;
         const max = Math.max(0, adj.upper - adj.page_size);
-        adj.value = Math.max(0, Math.min(max, adj.value + dy * step));
+        adj.value = Math.max(0, Math.min(max, adj.value + delta * step));
         return Clutter.EVENT_STOP;
     }
 
@@ -644,21 +682,26 @@ class StageSidebar {
         return actor === this._panel || this._panel.contains(actor);
     }
 
-    /** `vertical` is deprecated in favor of `orientation` on GNOME 48+ — set
-     *  whichever the running shell offers. */
-    _setVertical(box) {
-        if ('orientation' in St.BoxLayout.prototype)
-            box.orientation = Clutter.Orientation.VERTICAL;
-        else
-            box.vertical = true;
+    /** ease() property for the perspective tilt — Y axis for a column, X for a
+     *  bottom strip, so the tilt always leans into the screen. */
+    _rotProp(angle) {
+        return this._VERTICAL ? { rotation_angle_y: angle } : { rotation_angle_x: angle };
     }
 
-    /** Show the edge trigger only while actually needed (off screen, enabled,
-     *  not fullscreen) — otherwise it steals input along the screen edge. */
+    /** `vertical` is deprecated in favor of `orientation` on GNOME 48+ — set
+     *  whichever the running shell offers. */
+    _setOrientation(box, vertical) {
+        if ('orientation' in St.BoxLayout.prototype)
+            box.orientation = vertical ? Clutter.Orientation.VERTICAL : Clutter.Orientation.HORIZONTAL;
+        else
+            box.vertical = vertical;
+    }
+
+    /** Show the edge trigger only while actually needed (off screen, not
+     *  fullscreen) — otherwise it steals input along the screen edge. */
     _syncEdge() {
         if (!this._edge) return;
-        const wanted = this._settings.get_boolean('enable-stage-sidebar') &&
-                       !this._visible && !this._fullscreen();
+        const wanted = !this._visible && !this._fullscreen();
         if (wanted) this._edge.show();
         else this._edge.hide();
     }
@@ -669,19 +712,32 @@ class StageSidebar {
         if (!this._panel || !this._edge || !this._scroll) return;
         const mon = _getMon();
         const topH = Main.panel ? Main.panel.height : 0;
-        const panelW = this._PANEL_W;
-        const edgeW = this._EDGE_W;
-        const panelH = mon.height - topH;
+        const vertical = this._VERTICAL;
+        const [panelW, panelH] = this._panelSize(mon, topH);
+        const [edgeX, edgeY, edgeW, edgeH] = this._edgeGeom(mon, topH);
 
-        this._edge.set_size(edgeW, panelH);
-        this._edge.set_position(this._edgeX(mon), mon.y + topH);
+        this._edge.set_size(edgeW, edgeH);
+        this._edge.set_position(edgeX, edgeY);
 
-        // Drop any in-flight slide first — it's aimed at the old width and
+        // The edge can change axis, not just size — re-apply orientation and the
+        // scrolling axis so a left↔bottom switch doesn't keep the old ones.
+        const sf = this._scaleFactor;
+        this._setOrientation(this._box, vertical);
+        this._box.x_align = vertical ? Clutter.ActorAlign.CENTER : Clutter.ActorAlign.START;
+        this._box.y_align = vertical ? Clutter.ActorAlign.START : Clutter.ActorAlign.CENTER;
+        this._box.set_style(vertical
+            ? `padding: ${Math.round(24 * sf)}px 0px; spacing: ${Math.round(10 * sf)}px;`
+            : `padding: 0px ${Math.round(24 * sf)}px; spacing: ${Math.round(10 * sf)}px;`);
+        this._scroll.hscrollbar_policy = vertical ? St.PolicyType.NEVER : St.PolicyType.EXTERNAL;
+        this._scroll.vscrollbar_policy = vertical ? St.PolicyType.EXTERNAL : St.PolicyType.NEVER;
+
+        // Drop any in-flight slide first — it's aimed at the old edge and
         // would otherwise leave the panel at a stale offset.
         this._panel.remove_all_transitions();
         this._panel.set_size(panelW, panelH);
-        const x = this._visible ? this._panelVisibleX(mon) : this._panelHiddenX(mon);
-        this._panel.set_position(x, mon.y + topH);
+        this._panel.set_position(...(this._visible
+            ? this._panelVisiblePos(mon, topH)
+            : this._panelHiddenPos(mon, topH)));
         this._scroll.set_size(panelW, panelH);
         this._syncEdge();
 
@@ -717,6 +773,10 @@ class StageSidebar {
             const win = actor?.meta_window;
             if (win) this._onWindowUnminimize(win);
         });
+        this._sig(global.window_manager, 'size-change', (_wm, actor, change) => {
+            const win = actor?.meta_window;
+            if (win) this._onWindowSizeChange(win, change);
+        });
 
         this._sig(global.display, 'notify::focus-window', () => this._scheduleRefresh());
         this._sig(global.workspace_manager, 'active-workspace-changed', () => this._initGroups());
@@ -740,15 +800,6 @@ class StageSidebar {
             if (this._visible) this._refresh();
         });
 
-        this._sig(this._settings, 'changed::enable-stage-sidebar', () => {
-            if (!this._settings.get_boolean('enable-stage-sidebar')) {
-                if (this._visible) this._hide();
-            } else if (!this._settings.get_boolean('sidebar-auto-hide')) {
-                this._show();
-            }
-            this._syncEdge();
-            this._applyChrome();
-        });
         this._sig(this._settings, 'changed::sidebar-reserve-space', () => this._applyChrome());
         this._sig(this._settings, 'changed::sidebar-mode', () => {
             this._initGroups();
@@ -1038,9 +1089,59 @@ class StageSidebar {
         this._syncForceShow();
     }
 
+    /** Opt-in (issue #10): maximizing gives a window a stage of its own and
+     *  parks its former stage-mates as a card; unmaximizing returns it.
+     *  Groups mode only — apps/workspaces modes derive their stages elsewhere. */
+    _onWindowSizeChange(win, change) {
+        if (!_isNormal(win)) return;
+        // Only the outbound promotion is gated (same rule as maximize-to-
+        // workspace): a window promoted earlier must still get home if the
+        // setting or the mode changed while it was maximized.
+        if (change === Meta.SizeChange.UNMAXIMIZE) { this._returnFromOwnGroup(win); return; }
+        if (change !== Meta.SizeChange.MAXIMIZE) return;
+
+        // One enum, so 'workspace' and 'stage' can no longer both fire — which
+        // used to park the stage-mates and then strand an empty stage.
+        if (this._settings.get_string('maximize-behavior') !== 'stage') return;
+        if (this._settings.get_string('sidebar-mode') !== 'groups') return;
+        this._promoteToOwnGroup(win);
+    }
+
+    _promoteToOwnGroup(win) {
+        const group = this._findGroupForWindow(win);
+        // Already alone on its stage — promoting would just renumber it.
+        if (!group || this._groupWindows(group).length < 2) return;
+        // _swapToGroup only acts on the active workspace, so promoting a
+        // background stage would split it and never park anything.
+        if (group.ws !== this._activeWs()) return;
+
+        group.windows.delete(win);
+        this._maxOrigin.set(win, group.id);
+        const promoted = { id: this._nextGid++, ws: group.ws, windows: new Set([win]) };
+        this._groups.push(promoted);
+        this._swapToGroup(promoted);
+    }
+
+    _returnFromOwnGroup(win) {
+        const originId = this._maxOrigin.get(win);
+        if (originId === undefined) return;
+        this._maxOrigin.delete(win);
+
+        const origin = this._groups.find(g => g.id === originId);
+        // The origin stage can be gone (its windows were all closed) or the
+        // window dragged away since — leave it where it is rather than rebuild.
+        if (!origin || origin.ws !== this._workspaceOf(win)) return;
+
+        this._findGroupForWindow(win)?.windows.delete(win);
+        origin.windows.add(win);
+        this._cleanupEmptyGroups();
+        this._swapToGroup(origin);
+    }
+
     _onWindowDestroy(win) {
         this._expectMinimize.delete(win);
         this._expectUnminimize.delete(win);
+        this._maxOrigin.delete(win);
         this._dropSnapshot(win);
         for (const group of this._groups) {
             group.windows.delete(win);
@@ -1123,8 +1224,9 @@ class StageSidebar {
                 this._visible = false;
                 if (this._panel) {
                     this._panel.remove_all_transitions();
+                    const m = _getMon();
                     this._panel.set_position(
-                        this._panelHiddenX(_getMon()), this._panel.y);
+                        ...this._panelHiddenPos(m, Main.panel ? Main.panel.height : 0));
                 }
             }
             this._syncEdge();
@@ -1133,8 +1235,7 @@ class StageSidebar {
             this._syncEdge();
             // An always-visible sidebar has to come back on its own; it used to
             // stay hidden until the user happened to brush the screen edge.
-            if (this._settings.get_boolean('enable-stage-sidebar') &&
-                (!this._settings.get_boolean('sidebar-auto-hide') || this._shouldForceShow()))
+            if (!this._settings.get_boolean('sidebar-auto-hide') || this._shouldForceShow())
                 this._show();
         }
     }
@@ -1159,7 +1260,6 @@ class StageSidebar {
     }
 
     _toggleVisible() {
-        if (!this._settings.get_boolean('enable-stage-sidebar')) return;
         if (this._visible) this._hide();
         else this._show();
     }
@@ -1170,16 +1270,17 @@ class StageSidebar {
     // one meant a pointer returning mid-slide-out was dropped with nothing to retry.
     _show() {
         if (this._visible || !this._panel) return;
-        if (!this._settings.get_boolean('enable-stage-sidebar') || this._fullscreen()) return;
+        if (this._fullscreen()) return;
 
         this._visible = true;
         this._killHideTimer();
         this._refresh();
         this._syncEdge();
 
+        const [vx, vy] = this._panelVisiblePos(_getMon(), Main.panel ? Main.panel.height : 0);
         this._panel.remove_all_transitions();
         this._panel.ease({
-            x: this._panelVisibleX(_getMon()),
+            x: vx, y: vy,
             duration: this._SLIDE_MS,
             mode: Clutter.AnimationMode.EASE_OUT_QUAD,
             // Claimed only once settled — mid-slide would resize every window on every frame.
@@ -1200,9 +1301,10 @@ class StageSidebar {
         // instead of showing stale cards.
         this._signature = null;
 
+        const [hx, hy] = this._panelHiddenPos(_getMon(), Main.panel ? Main.panel.height : 0);
         this._panel.remove_all_transitions();
         this._panel.ease({
-            x: this._panelHiddenX(_getMon()),
+            x: hx, y: hy,
             duration: this._SLIDE_MS,
             mode: Clutter.AnimationMode.EASE_OUT_QUAD,
         });
@@ -1235,7 +1337,7 @@ class StageSidebar {
     // ── Render ──────────────────────────────────────────────────────────
 
     _refresh() {
-        if (!this._settings.get_boolean('enable-stage-sidebar') || !this._box) return;
+        if (!this._box) return;
 
         // Nothing to redraw? Then don't — every rebuild recreates a window clone
         // per thumbnail, and this runs on every focus change.
@@ -1273,7 +1375,7 @@ class StageSidebar {
     _renderSignature() {
         const mode = this._settings.get_string('sidebar-mode');
         const parts = [
-            mode, this._scaleFactor, this._themeClass, this._PANEL_W,
+            mode, this._scaleFactor, this._themeClass, this._PANEL_W, this._POS,
             this._BASE_SCALE, this._PERSP_ANGLE,
             this._settings.get_boolean('show-app-icons') ? 1 : 0,
             this._settings.get_boolean('show-group-count') ? 1 : 0,
@@ -1475,8 +1577,10 @@ class StageSidebar {
             card.set_scale(base * 0.82, base * 0.82);
 
             // Perspective goes on the CARD, not the thumbnail — rotating only the
-            // child let content spill outside the card's pill background.
-            card.rotation_angle_y = angle;
+            // child let content spill outside the card's pill background. A bottom
+            // strip tilts around X so the cards still lean into the screen.
+            if (this._VERTICAL) card.rotation_angle_y = angle;
+            else card.rotation_angle_x = angle;
 
             card.ease({
                 opacity: CARD_REST_OPACITY,
@@ -1500,7 +1604,9 @@ class StageSidebar {
             x_align: Clutter.ActorAlign.CENTER,
             style_class: this._cls('stage-card'),
         });
-        this._setVertical(card);
+        // Always vertical: the icon row sits under the thumbnail whatever edge
+        // the panel is on — only the card *column* changes axis.
+        this._setOrientation(card, true);
         return card;
     }
 
@@ -1687,16 +1793,30 @@ class StageSidebar {
         const sf = this._scaleFactor;
         const layers = Math.min(Math.max(count, 1), MAX_STACK);
         const perspective = 1 + (this._PERSP_ANGLE / 45) * PERSP_HEADROOM;
-        const budget = (this._PANEL_W - CARD_MARGIN * sf) / perspective - 2 * CARD_PAD_X * sf;
+        const ratio = aspect ?? this._monitorAspect();
 
         // Fan-out is a fraction of the thumbnail, not a fixed offset, so
-        // `w + (layers-1)·w·k ≤ budget` always has a solution.
+        // `size + (layers-1)·size·k ≤ budget` always has a solution.
+        if (!this._VERTICAL) {
+            // Bottom strip: the panel's thickness caps the HEIGHT, and width
+            // follows the aspect. The icon row sits below the thumb, so it comes
+            // out of the same budget.
+            const iconRow = this._settings.get_boolean('show-app-icons')
+                ? (ICON_SIZE + 5) * sf : 0;
+            const budgetH = (this._PANEL_W - CARD_MARGIN * sf) / perspective -
+                            2 * CARD_PAD_Y * sf - iconRow;
+            const kv = STACK_V / THUMB_W;
+            const fittedH = budgetH / (1 + (layers - 1) * kv);
+            const h = Math.round(Math.max(MIN_THUMB_W * sf / THUMB_ASPECT_MAX, fittedH));
+            return [Math.round(h * ratio), h];
+        }
+
+        const budget = (this._PANEL_W - CARD_MARGIN * sf) / perspective - 2 * CARD_PAD_X * sf;
         const k = STACK_H / THUMB_W;
         const fitted = budget / (1 + (layers - 1) * k);
 
         // No upper cap: a wider sidebar is a request for bigger cards.
         const w = Math.round(Math.max(MIN_THUMB_W * sf, fitted));
-        const ratio = aspect ?? this._monitorAspect();
         return [w, Math.round(w / ratio)];
     }
 
@@ -1828,7 +1948,7 @@ class StageSidebar {
             card.ease({
                 scale_x: base, scale_y: base,
                 opacity: CARD_REST_OPACITY,
-                rotation_angle_y: angle,
+                ...this._rotProp(angle),
                 duration: 200,
                 mode: Clutter.AnimationMode.EASE_OUT_QUAD,
             });
@@ -1853,7 +1973,7 @@ class StageSidebar {
             this._cards[i].ease({
                 scale_x: s, scale_y: s,
                 opacity: op,
-                rotation_angle_y: rot,
+                ...this._rotProp(rot),
                 duration: 180,
                 mode: Clutter.AnimationMode.EASE_OUT_QUAD,
             });
@@ -1923,13 +2043,13 @@ class StageSidebar {
 
         const mon = _getMon();
         const topH = Main.panel ? Main.panel.height : 0;
-        const [, cardY] = card.get_transformed_position();
+        const [cardX, cardY] = card.get_transformed_position();
 
         // Collect windows that have compositor actors (cloneable)
         const cloneable = windows.filter(w => !!w.get_compositor_private());
 
         if (cloneable.length === 0) {
-            this._showIconPreview(windows, cardY);
+            this._showIconPreview(windows, cardX, cardY);
             return;
         }
 
@@ -1956,7 +2076,7 @@ class StageSidebar {
         }
 
         if (clones.length === 0) {
-            this._showIconPreview(windows, cardY);
+            this._showIconPreview(windows, cardX, cardY);
             return;
         }
 
@@ -1964,15 +2084,13 @@ class StageSidebar {
         const previewW = maxCloneW + padding * 2;
         const previewH = totalH;
 
-        const py = Math.max(mon.y + topH + 8 * sf,
-            Math.min(cardY, mon.y + mon.height - previewH - 20 * sf));
-
         this._preview = new St.Widget({
             style_class: this._cls('stage-preview'),
             reactive: false,
         });
         this._preview.set_size(previewW, previewH);
-        this._preview.set_position(this._previewX(mon, previewW, 8 * sf), py);
+        this._preview.set_position(
+            ...this._previewPos(mon, topH, previewW, previewH, 8 * sf, cardX, cardY));
 
         let yOff = padding;
         for (const holder of clones) {
@@ -1987,7 +2105,7 @@ class StageSidebar {
     }
 
     /** Fallback preview: app icons + names when clones aren't available. */
-    _showIconPreview(windows, cardY) {
+    _showIconPreview(windows, cardX, cardY) {
         const tracker = Shell.WindowTracker.get_default();
         const mon = _getMon();
         const topH = Main.panel ? Main.panel.height : 0;
@@ -2001,8 +2119,8 @@ class StageSidebar {
             reactive: false,
         });
         this._preview.set_size(previewW, previewH);
-        let py = Math.max(mon.y + topH + 8, Math.min(cardY, mon.y + mon.height - previewH - 20));
-        this._preview.set_position(this._previewX(mon, previewW, 8), py);
+        this._preview.set_position(
+            ...this._previewPos(mon, topH, previewW, previewH, 8, cardX, cardY));
 
         const seenApps = new Map();
         for (const w of windows) {
@@ -2105,7 +2223,6 @@ class StageSidebar {
       */
     _shouldForceShow() {
         return this._settings.get_boolean('show-on-empty-workspace') &&
-            this._settings.get_boolean('enable-stage-sidebar') &&
             !this._wsHasVisibleWindows();
     }
 
@@ -2115,7 +2232,6 @@ class StageSidebar {
       * minimize, unminimize, window map/destroy, and setting toggle.
       */
     _syncForceShow() {
-        if (!this._settings.get_boolean('enable-stage-sidebar')) return;
         if (this._fullscreen()) return;
 
         if (this._shouldForceShow()) {
@@ -3037,7 +3153,8 @@ class ArcSidebar {
     _cancelDrag() {
         this._killDragPollTimer();
         this._killDragGhost();
-        if (!this._drag) return;
+        // Unconditional — disable() calls this, and an early return here would
+        // read as selective disable (same fix as _cancelAppDrag).
         this._drag = null;
         global.stage.disconnectObject(this);
     }
@@ -3205,10 +3322,22 @@ export default class StageManagerExtension extends Extension {
     enable() {
         this._sigSources = new Set();
         this._settings = this.getSettings();
+        this._migrateMaximize();
         this._max = new MaximizeToWorkspace(this._settings);
         this._max.enable();
         this._buildActiveSidebar();
         this._sig(this._settings, 'changed::sidebar-layout', () => this._swapSidebar());
+    }
+
+    /** Fold the two deprecated maximize switches into maximize-behavior once.
+     *  Workspace wins when both were on — that was the old precedence. */
+    _migrateMaximize() {
+        if (this._settings.get_boolean('maximize-migrated')) return;
+        if (this._settings.get_boolean('enable-maximize-to-workspace'))
+            this._settings.set_string('maximize-behavior', 'workspace');
+        else if (this._settings.get_boolean('maximize-to-new-group'))
+            this._settings.set_string('maximize-behavior', 'stage');
+        this._settings.set_boolean('maximize-migrated', true);
     }
 
     _sig(obj, signal, cb) {

@@ -464,6 +464,102 @@ test('a card never overflows the sidebar, at any stack depth or angle', () => {
     }
 });
 
+/* ═══ bottom position — the stack laid out as a horizontal strip ══════ */
+
+const CARD_PAD_Y = 8, STACK_V = 4, ICON_ROW = 22 + 5;
+
+test('bottom: a card never overflows the strip height, at any depth or angle', () => {
+    wsm.reset(1);
+    for (const thickness of [120, 160, 220, 300, 400]) {
+        for (const angle of [0, 22, 45]) {
+            const sidebar = makeSidebar(makeSettings({
+                'stack-panel-position': 'bottom',
+                'sidebar-width': thickness, 'perspective-angle': angle,
+            }));
+            for (const layers of [1, 2, 3, 5]) {
+                const [, th] = sidebar._thumbSize(layers);
+                const fan = (Math.min(Math.max(layers, 1), 3) - 1) * th * (STACK_V / 170);
+                const outer = th + fan + 2 * CARD_PAD_Y + ICON_ROW;
+                const projected = outer * (1 + (angle / 45) * PERSP_HEADROOM);
+                assert.ok(projected <= thickness,
+                    `strip ${thickness}px, angle ${angle}°, ${layers} windows: card projects ${projected.toFixed(1)}px tall`);
+            }
+        }
+    }
+});
+
+test('bottom: the panel spans the monitor width and parks below the screen', () => {
+    wsm.reset(1);
+    const sidebar = makeSidebar(makeSettings({ 'stack-panel-position': 'bottom', 'sidebar-width': 200 }));
+    const mon = Main.layoutManager.primaryMonitor;
+
+    assert.deepEqual(sidebar._panelSize(mon, 32), [mon.width, 200],
+        'a bottom strip is monitor-wide and sidebar-width tall');
+    assert.deepEqual(sidebar._panelVisiblePos(mon, 32), [mon.x, mon.y + mon.height - 200]);
+    assert.deepEqual(sidebar._panelHiddenPos(mon, 32), [mon.x, mon.y + mon.height],
+        'hidden parks fully below the bottom edge');
+});
+
+test('bottom: the edge strip runs along the bottom, not down the side', () => {
+    wsm.reset(1);
+    const sidebar = makeSidebar(makeSettings({ 'stack-panel-position': 'bottom', 'edge-trigger-width': 4 }));
+    const mon = Main.layoutManager.primaryMonitor;
+    const [x, y, w, h] = sidebar._edgeGeom(mon, 32);
+
+    assert.equal(w, mon.width, 'edge spans the full width');
+    assert.equal(h, 4, 'edge is only the trigger thickness tall');
+    assert.equal(x, mon.x);
+    assert.equal(y, mon.y + mon.height - 4);
+});
+
+test('bottom: left/right geometry is unchanged (no regression)', () => {
+    wsm.reset(1);
+    const mon = Main.layoutManager.primaryMonitor;
+    const left = makeSidebar(makeSettings({ 'stack-panel-position': 'left', 'sidebar-width': 220 }));
+    const right = makeSidebar(makeSettings({ 'stack-panel-position': 'right', 'sidebar-width': 220 }));
+
+    assert.deepEqual(left._panelSize(mon, 32), [220, mon.height - 32]);
+    assert.deepEqual(left._panelVisiblePos(mon, 32), [mon.x, mon.y + 32]);
+    assert.deepEqual(left._panelHiddenPos(mon, 32), [mon.x - 220, mon.y + 32]);
+    assert.deepEqual(right._panelVisiblePos(mon, 32), [mon.x + mon.width - 220, mon.y + 32]);
+    assert.deepEqual(right._panelHiddenPos(mon, 32), [mon.x + mon.width, mon.y + 32]);
+});
+
+test('bottom: the card strip scrolls horizontally, the column vertically', () => {
+    wsm.reset(1);
+    const bottom = makeSidebar(makeSettings({ 'stack-panel-position': 'bottom' }));
+    bottom._build();
+    assert.equal(bottom._scroll.hscrollbar_policy, St.PolicyType.EXTERNAL,
+        'EXTERNAL, not NEVER — NEVER leaves the adjustment with no range');
+    assert.equal(bottom._scroll.vscrollbar_policy, St.PolicyType.NEVER);
+
+    const side = makeSidebar(makeSettings({ 'stack-panel-position': 'left' }));
+    side._build();
+    assert.equal(side._scroll.vscrollbar_policy, St.PolicyType.EXTERNAL);
+    assert.equal(side._scroll.hscrollbar_policy, St.PolicyType.NEVER);
+});
+
+test('bottom: a wheel event moves the horizontal adjustment', () => {
+    wsm.reset(1);
+    const sidebar = makeSidebar(makeSettings({ 'stack-panel-position': 'bottom' }));
+    sidebar._build();
+    sidebar._scroll.setContentWidth(3000, 1000);
+
+    sidebar._box.emit('scroll-event', { get_scroll_direction: () => Clutter.ScrollDirection.DOWN });
+    assert.ok(sidebar._scroll.hadjustment.value > 0, 'a wheel must drive the strip sideways');
+    assert.equal(sidebar._scroll.vadjustment.value, 0, 'the unused axis must stay put');
+});
+
+test('bottom: the render fingerprint changes with position, or cards keep the old axis', () => {
+    wsm.reset(1);
+    const settings = makeSettings({ 'stack-panel-position': 'left' });
+    const sidebar = makeSidebar(settings);
+    const before = sidebar._renderSignature();
+    settings.set('stack-panel-position', 'bottom');
+    assert.notEqual(sidebar._renderSignature(), before,
+        '_refresh() would skip the rebuild and leave a vertical column on the bottom edge');
+});
+
 test('the pre-fix hardcoded 170px thumbnail really did overflow (regression guard)', () => {
     // The old code: fixed 170px thumb + fixed 14px fan-out per layer.
     // Three-deep stack in the default 220px sidebar: 170 + 2*14 + 2*14 = 226.
@@ -939,7 +1035,7 @@ test('#8 unmaximize still returns the window when the feature is toggled off mid
         clock.advance(100);
         assert.equal(a.get_workspace(), ws0, 'precondition: moved off ws1');
 
-        settings.set('enable-maximize-to-workspace', false);
+        settings.set('maximize-behavior', 'none');
         windowManager.emit('size-change', { meta_window: a }, Meta.SizeChange.UNMAXIMIZE);
         clock.advance(100);
 
@@ -1188,10 +1284,9 @@ test('_toggleVisible flips the sidebar and respects the master switch', () => {
     sidebar._toggleVisible();
     assert.equal(hidden, 1, 'toggle from visible must hide');
 
-    // With the extension switched off the shortcut must do nothing at all.
-    settings.set('enable-stage-sidebar', false);
+    // Toggling is symmetric — a third press shows again, not a stuck state.
     sidebar._toggleVisible();
-    assert.equal(shown, 1, 'shortcut must be inert while the sidebar is disabled');
+    assert.equal(shown, 2, 'toggle must keep alternating');
 });
 
 /* ═══ app merge/un-merge — grouping fold ═════════════════════════════ */
@@ -1999,6 +2094,186 @@ test('arc: a delay of 0 keeps the original instant reveal', () => {
     assert.equal(arc._shown, 1);
     assert.equal(arc._edgeTimer, null, 'delay 0 must not arm a timer');
     arc._destroyUI();
+});
+
+/* ═══ #10 — opt-in maximize-to-new-stage ═══════════════════════════════ */
+
+/** ws0 active with three windows in one stage; `a` is the one to maximize. */
+function maxGroupSidebar(overrides = {}) {
+    const [ws0] = wsm.reset(2);
+    wsm.setActive(ws0);
+    const a = new FakeWindow('appA');
+    const b = new FakeWindow('appB');
+    const c = new FakeWindow('appC');
+    [a, b, c].forEach(w => ws0.adopt(w));
+
+    const sidebar = makeSidebar(makeSettings({
+        'maximize-behavior': 'stage', ...overrides,
+    }));
+    sidebar._initGroups();
+    return { sidebar, ws0, a, b, c };
+}
+
+test('#10 maximizing promotes the window into a stage of its own', () => {
+    const { sidebar, a, b, c } = maxGroupSidebar();
+    const originId = sidebar._findGroupForWindow(a).id;
+
+    sidebar._onWindowSizeChange(a, Meta.SizeChange.MAXIMIZE);
+
+    const active = sidebar._getActiveGroup();
+    assert.notEqual(active.id, originId, 'a new stage should have become active');
+    assert.deepEqual([...active.windows], [a], 'the promoted stage holds only the maximized window');
+    assert.equal(b.minimized, true, 'former stage-mates are parked as a card');
+    assert.equal(c.minimized, true);
+    assert.equal(a.minimized, false, 'the maximized window itself stays on screen');
+});
+
+test('#10 unmaximizing returns the window to the stage it came from', () => {
+    const { sidebar, a, b, c } = maxGroupSidebar();
+    const originId = sidebar._findGroupForWindow(a).id;
+
+    sidebar._onWindowSizeChange(a, Meta.SizeChange.MAXIMIZE);
+    sidebar._onWindowSizeChange(a, Meta.SizeChange.UNMAXIMIZE);
+
+    const active = sidebar._getActiveGroup();
+    assert.equal(active.id, originId, 'should be back on the original stage');
+    assert.equal(active.windows.size, 3);
+    [a, b, c].forEach(w => assert.ok(active.windows.has(w),
+        'the original stage should hold all three windows again'));
+    assert.equal(b.minimized, false, 'stage-mates come back with it');
+    assert.equal(sidebar._maxOrigin.size, 0, 'the origin record is consumed, not leaked');
+});
+
+test('#10 the promotion is inert while the setting is off', () => {
+    const { sidebar, a, b } = maxGroupSidebar({ 'maximize-behavior': 'none' });
+    const before = sidebar._groups.length;
+
+    sidebar._onWindowSizeChange(a, Meta.SizeChange.MAXIMIZE);
+
+    assert.equal(sidebar._groups.length, before, 'no stage should have been created');
+    assert.equal(b.minimized, false, 'nothing should have been parked');
+});
+
+test('#10 the promotion is inert outside groups mode', () => {
+    const { sidebar, a, b } = maxGroupSidebar({ 'sidebar-mode': 'apps' });
+    const before = sidebar._groups.length;
+
+    sidebar._onWindowSizeChange(a, Meta.SizeChange.MAXIMIZE);
+
+    assert.equal(sidebar._groups.length, before, 'apps mode derives its stages elsewhere');
+    assert.equal(b.minimized, false);
+});
+
+test('#10 maximize-to-workspace wins when both maximize options are on', () => {
+    const { sidebar, a, b } = maxGroupSidebar({ 'maximize-behavior': 'workspace' });
+    const before = sidebar._groups.length;
+
+    sidebar._onWindowSizeChange(a, Meta.SizeChange.MAXIMIZE);
+
+    assert.equal(sidebar._groups.length, before,
+        'promoting as well would strand an empty stage on the old workspace');
+    assert.equal(b.minimized, false);
+});
+
+test('#10 a promoted window still gets home if the setting is switched off', () => {
+    const { sidebar, a } = maxGroupSidebar();
+    const originId = sidebar._findGroupForWindow(a).id;
+
+    sidebar._onWindowSizeChange(a, Meta.SizeChange.MAXIMIZE);
+    sidebar._settings.set('maximize-behavior', 'none');
+    sidebar._onWindowSizeChange(a, Meta.SizeChange.UNMAXIMIZE);
+
+    assert.equal(sidebar._getActiveGroup().id, originId,
+        'the return path must not be gated on the setting');
+});
+
+test('#10 maximizing a window already alone on its stage is a no-op', () => {
+    const [ws0] = wsm.reset(2);
+    wsm.setActive(ws0);
+    const a = new FakeWindow('appA'); ws0.adopt(a);
+
+    const sidebar = makeSidebar(makeSettings({
+        'maximize-behavior': 'stage',
+    }));
+    sidebar._initGroups();
+    const before = sidebar._groups.length;
+
+    sidebar._onWindowSizeChange(a, Meta.SizeChange.MAXIMIZE);
+
+    assert.equal(sidebar._groups.length, before, 'must not spawn a duplicate lone stage');
+    assert.equal(sidebar._maxOrigin.size, 0, 'nothing to return to, so nothing recorded');
+});
+
+test('#10 maximizing on a background workspace leaves that stage intact', () => {
+    const [ws0, ws1] = wsm.reset(2);
+    wsm.setActive(ws1);
+    const a = new FakeWindow('appA');
+    const b = new FakeWindow('appB');
+    [a, b].forEach(w => ws1.adopt(w));
+
+    const sidebar = makeSidebar(makeSettings({
+        'maximize-behavior': 'stage',
+    }));
+    sidebar._initGroups();
+    switchWorkspace(sidebar, ws0);   // ws1 is now in the background
+
+    const originId = sidebar._findGroupForWindow(a).id;
+    sidebar._onWindowSizeChange(a, Meta.SizeChange.MAXIMIZE);
+
+    assert.equal(sidebar._findGroupForWindow(a)?.id, originId,
+        'a swap that cannot run must not half-split a background stage');
+    assert.equal(sidebar._maxOrigin.size, 0, 'and must not record an origin it never acted on');
+});
+
+test('#10 unmaximizing after switching away still rejoins, and the stage survives', () => {
+    const [ws0, ws1] = wsm.reset(2);
+    wsm.setActive(ws1);
+    const a = new FakeWindow('appA');
+    const b = new FakeWindow('appB');
+    [a, b].forEach(w => ws1.adopt(w));
+
+    const sidebar = makeSidebar(makeSettings({
+        'maximize-behavior': 'stage',
+    }));
+    sidebar._initGroups();
+    const originId = sidebar._findGroupForWindow(a).id;
+
+    sidebar._onWindowSizeChange(a, Meta.SizeChange.MAXIMIZE);
+    switchWorkspace(sidebar, ws0);                                 // leave ws1
+    sidebar._onWindowSizeChange(a, Meta.SizeChange.UNMAXIMIZE);    // unmaximize off-screen
+
+    const home = sidebar._findGroupForWindow(a);
+    assert.equal(home?.id, originId, 'the window must rejoin its origin stage even off-screen');
+    assert.ok(home.windows.has(b), 'and the stage must still hold its other windows');
+
+    switchWorkspace(sidebar, ws1);   // come back
+    assert.ok(sidebar._findGroupForWindow(a), 'the window must still belong to a stage after returning');
+});
+
+test('#10 unmaximize strands nothing when the origin stage died meanwhile', () => {
+    const { sidebar, a, b, c } = maxGroupSidebar();
+
+    sidebar._onWindowSizeChange(a, Meta.SizeChange.MAXIMIZE);
+    // The whole origin stage is closed while `a` is maximized.
+    sidebar._onWindowDestroy(b);
+    sidebar._onWindowDestroy(c);
+    sidebar._onWindowSizeChange(a, Meta.SizeChange.UNMAXIMIZE);
+
+    assert.equal(a.minimized, false, 'the surviving window must stay on screen');
+    assert.ok(sidebar._findGroupForWindow(a), 'it must still belong to some stage');
+});
+
+test('#10 disable() clears the origin map and _wire() binds size-change', () => {
+    const { sidebar, a } = maxGroupSidebar();
+    sidebar._onWindowSizeChange(a, Meta.SizeChange.MAXIMIZE);
+    assert.equal(sidebar._maxOrigin.size, 1, 'precondition: an origin is recorded');
+
+    sidebar._build();
+    sidebar._wire();
+    assert.ok(sidebar._sigSources.has(windowManager),
+        '_wire() must connect the window manager for size-change');
+    sidebar.disable();
+    assert.equal(sidebar._maxOrigin.size, 0, 'disable() must drop every origin record');
 });
 
 /* ── report ──────────────────────────────────────────────────────────── */
