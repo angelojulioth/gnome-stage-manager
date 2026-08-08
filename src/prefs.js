@@ -76,7 +76,7 @@ export default class StageManagerPreferences extends ExtensionPreferences {
         const maxLabels = [
             _('Do nothing'),
             _('Move it to a new workspace'),
-            _('Give it its own stage (Stack layout, Groups mode)'),
+            _('Give it its own stage (In Stack Mode)'),
         ];
         const maxDropdown = new Gtk.DropDown({
             model: Gtk.StringList.new(maxLabels),

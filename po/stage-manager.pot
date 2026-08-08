@@ -95,7 +95,7 @@ msgid "Move it to a new workspace"
 msgstr ""
 
 #: src/prefs.js:79
-msgid "Give it its own stage (Stack layout, Groups mode)"
+msgid "Give it its own stage (In Stack Mode)"
 msgstr ""
 
 #: src/prefs.js:94
