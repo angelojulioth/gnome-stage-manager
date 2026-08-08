@@ -344,12 +344,37 @@ export default class StageManagerPreferences extends ExtensionPreferences {
         });
         infoGroup.add(sessionRow);
 
+        // Project links — the repo URL comes from metadata.json so it stays in
+        // step with what EGO shows on the extension's page.
+        const repoUrl = this.metadata.url || 'https://github.com/itsdigvijaysing/gnome-stage-manager';
+        const linkGroup = new Adw.PreferencesGroup({
+            title: _('Project'),
+            description: _('Source code, issue tracker and releases on GitHub'),
+        });
+        aboutPage.add(linkGroup);
+
+        linkGroup.add(this._addLinkRow(_('Repository'),
+            _('Browse the source, licence and changelog'), repoUrl, _('Open')));
+        linkGroup.add(this._addLinkRow(_('Report an Issue'),
+            _('Bug reports and feature requests'), `${repoUrl}/issues`, _('Open')));
+
         // Logs section
         const logGroup = new Adw.PreferencesGroup({
             title: _('Extension Logs'),
             description: _('Recent errors from this extension (for bug reports)'),
         });
         aboutPage.add(logGroup);
+
+        const showLogsRow = new Adw.ActionRow({
+            title: _('Show Logs'),
+            subtitle: _('The journal is read only when you ask for it'),
+        });
+        const showLogsBtn = new Gtk.Button({
+            label: _('Show'),
+            valign: Gtk.Align.CENTER,
+        });
+        showLogsRow.add_suffix(showLogsBtn);
+        logGroup.add(showLogsRow);
 
         const logView = new Gtk.TextView({
             editable: false,
@@ -400,6 +425,68 @@ export default class StageManagerPreferences extends ExtensionPreferences {
         });
         copyRow.add_suffix(copyBtn);
         logGroup.add(copyRow);
+
+        // Hidden until asked for; the first reveal is also what triggers the
+        // journal read, so opening preferences never spawns a subprocess.
+        [logRow, refreshRow, copyRow].forEach(r => { r.visible = false; });
+        showLogsBtn.connect('clicked', () => {
+            const showing = !logRow.visible;
+            [logRow, refreshRow, copyRow].forEach(r => { r.visible = showing; });
+            showLogsBtn.label = showing ? _('Hide') : _('Show');
+            if (showing) this._loadLogs(logView);
+        });
+
+        // Reset — destructive, so it sits last and asks first.
+        const resetGroup = new Adw.PreferencesGroup({
+            title: _('Reset'),
+            description: _('Return every Stage Manager preference to its default'),
+        });
+        aboutPage.add(resetGroup);
+
+        const resetRow = new Adw.ActionRow({
+            title: _('Reset All Settings'),
+            subtitle: _('Layout, sidebar, cards, shortcuts and merged groups'),
+        });
+        const resetBtn = new Gtk.Button({
+            label: _('Reset'),
+            valign: Gtk.Align.CENTER,
+            css_classes: ['destructive-action'],
+        });
+        resetBtn.connect('clicked', () => this._confirmReset(window, settings));
+        resetRow.add_suffix(resetBtn);
+        resetGroup.add(resetRow);
+    }
+
+    /** An ActionRow whose suffix button opens `uri` in the default browser. */
+    _addLinkRow(title, subtitle, uri, label) {
+        const row = new Adw.ActionRow({ title, subtitle });
+        const button = new Gtk.LinkButton({
+            label,
+            uri,
+            valign: Gtk.Align.CENTER,
+        });
+        row.add_suffix(button);
+        return row;
+    }
+
+    /** Ask before wiping settings — a reset is not undoable. */
+    _confirmReset(window, settings) {
+        const dialog = new Adw.AlertDialog({
+            heading: _('Reset All Settings?'),
+            body: _('Every preference returns to its default, including merged groups and keyboard shortcuts. This cannot be undone.'),
+        });
+        dialog.add_response('cancel', _('Cancel'));
+        dialog.add_response('reset', _('Reset'));
+        dialog.set_response_appearance('reset', Adw.ResponseAppearance.DESTRUCTIVE);
+        dialog.set_default_response('cancel');
+        dialog.set_close_response('cancel');
+        dialog.connect('response', (_d, response) => {
+            if (response === 'reset') {
+                for (const key of settings.settings_schema.list_keys())
+                    settings.reset(key);
+            }
+        });
+        dialog.present(window);
     }
 
     /** Grey out `widget` (a group or row) while sidebar-layout isn't `wantedLayout`. */

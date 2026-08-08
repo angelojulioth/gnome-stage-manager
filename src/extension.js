@@ -1132,10 +1132,16 @@ class StageSidebar {
         // window dragged away since — leave it where it is rather than rebuild.
         if (!origin || origin.ws !== this._workspaceOf(win)) return;
 
-        this._findGroupForWindow(win)?.windows.delete(win);
+        const promoted = this._findGroupForWindow(win);
+        // Read before _cleanupEmptyGroups drops the emptied stage and its active id.
+        const onPromoted = this._isActiveGroup(promoted);
+        promoted?.windows.delete(win);
         origin.windows.add(win);
         this._cleanupEmptyGroups();
-        this._swapToGroup(origin);
+        // Only follow the window home if the user is still on its stage —
+        // unmaximizing a parked window is bookkeeping, not a navigation request.
+        if (onPromoted) this._swapToGroup(origin);
+        else this._scheduleRefresh();
     }
 
     _onWindowDestroy(win) {
@@ -2424,6 +2430,13 @@ class ArcSidebar {
         } catch (_) {
             this._mergeMap = new Map();
         }
+        // Repair maps from versions that folded a group key back in as an app id:
+        // drop those phantom entries (no app id contains the join separator),
+        // then collapse the duplicate segments they left behind.
+        for (const [aId, gKey] of [...this._mergeMap]) {
+            if (aId.includes('|')) this._mergeMap.delete(aId);
+            else this._mergeMap.set(aId, [...new Set(gKey.split('|'))].sort().join('|'));
+        }
     }
 
     _saveMergeMap() {
@@ -2445,7 +2458,9 @@ class ArcSidebar {
 
     _mergeApps(sourceAppId, targetAppId) {
         const targetKey = this._mergeMap.get(targetAppId) ?? targetAppId;
-        const members = new Set([targetKey, sourceAppId]);
+        // Seed with the target's app id, never its group key: a key is a join of
+        // ids, so folding one back in as an id doubles the key on every merge.
+        const members = new Set([targetAppId, sourceAppId]);
         this._mergeMap.forEach((gKey, aId) => { if (gKey === targetKey) members.add(aId); });
         const newKey = [...members].sort().join('|');
         members.forEach(aId => this._mergeMap.set(aId, newKey));

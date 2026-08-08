@@ -9,7 +9,7 @@ msgstr ""
 "Project-Id-Version: Stage Manager 2.0.3\n"
 "Report-Msgid-Bugs-To: https://github.com/itsdigvijaysing/gnome-stage-manager/"
 "issues\n"
-"POT-Creation-Date: 2026-08-09 01:44+0530\n"
+"POT-Creation-Date: 2026-08-09 02:38+0530\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -19,28 +19,28 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=INTEGER; plural=EXPRESSION;\n"
 
-#: src/extension.js:1482 src/extension.js:1912
+#: src/extension.js:1488 src/extension.js:1918
 #, javascript-format
 msgid "Workspace %d"
 msgstr ""
 
-#: src/extension.js:1911
+#: src/extension.js:1917
 #, javascript-format
 msgid "Workspace %d (current)"
 msgstr ""
 
-#: src/extension.js:1920
+#: src/extension.js:1926
 #, javascript-format
 msgid "%d window"
 msgid_plural "%d windows"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/extension.js:2134
+#: src/extension.js:2140
 msgid "Application"
 msgstr ""
 
-#: src/extension.js:2154
+#: src/extension.js:2160
 #, javascript-format
 msgid "%d window (minimized)"
 msgid_plural "%d windows (minimized)"
@@ -429,67 +429,137 @@ msgstr ""
 msgid "Session Type"
 msgstr ""
 
-#: src/prefs.js:343 src/prefs.js:523
+#: src/prefs.js:343 src/prefs.js:610
 msgid "unknown"
 msgstr ""
 
-#: src/prefs.js:349
+#: src/prefs.js:351
+msgid "Project"
+msgstr ""
+
+#: src/prefs.js:352
+msgid "Source code, issue tracker and releases on GitHub"
+msgstr ""
+
+#: src/prefs.js:356
+msgid "Repository"
+msgstr ""
+
+#: src/prefs.js:357
+msgid "Browse the source, licence and changelog"
+msgstr ""
+
+#: src/prefs.js:357 src/prefs.js:359
+msgid "Open"
+msgstr ""
+
+#: src/prefs.js:358
+msgid "Report an Issue"
+msgstr ""
+
+#: src/prefs.js:359
+msgid "Bug reports and feature requests"
+msgstr ""
+
+#: src/prefs.js:363
 msgid "Extension Logs"
 msgstr ""
 
-#: src/prefs.js:350
+#: src/prefs.js:364
 msgid "Recent errors from this extension (for bug reports)"
 msgstr ""
 
-#: src/prefs.js:375
+#: src/prefs.js:369
+msgid "Show Logs"
+msgstr ""
+
+#: src/prefs.js:370
+msgid "The journal is read only when you ask for it"
+msgstr ""
+
+#: src/prefs.js:373 src/prefs.js:435
+msgid "Show"
+msgstr ""
+
+#: src/prefs.js:400
 msgid "Press Refresh to load recent log messages."
 msgstr ""
 
-#: src/prefs.js:378
+#: src/prefs.js:403
 msgid "Refresh Logs"
 msgstr ""
 
-#: src/prefs.js:380
+#: src/prefs.js:405
 msgid "Refresh"
 msgstr ""
 
-#: src/prefs.js:388
+#: src/prefs.js:413
 msgid "Copy Logs"
 msgstr ""
 
-#: src/prefs.js:390
+#: src/prefs.js:415
 msgid "Copy to Clipboard"
 msgstr ""
 
-#: src/prefs.js:444
-msgid "Disabled"
+#: src/prefs.js:435
+msgid "Hide"
 msgstr ""
 
-#: src/prefs.js:456
-msgid "Set"
+#: src/prefs.js:441 src/prefs.js:451 src/prefs.js:479
+msgid "Reset"
 msgstr ""
 
-#: src/prefs.js:464
-msgid "Clear shortcut"
+#: src/prefs.js:442
+msgid "Return every Stage Manager preference to its default"
 msgstr ""
 
-#: src/prefs.js:479 src/prefs.js:485
-msgid "Press shortcut"
+#: src/prefs.js:447
+msgid "Reset All Settings"
 msgstr ""
 
-#: src/prefs.js:480 src/prefs.js:486
-msgid "Press the key combination you want to use, or Escape to cancel."
+#: src/prefs.js:448
+msgid "Layout, sidebar, cards, shortcuts and merged groups"
 msgstr ""
 
-#: src/prefs.js:488
+#: src/prefs.js:475
+msgid "Reset All Settings?"
+msgstr ""
+
+#: src/prefs.js:476
+msgid ""
+"Every preference returns to its default, including merged groups and "
+"keyboard shortcuts. This cannot be undone."
+msgstr ""
+
+#: src/prefs.js:478 src/prefs.js:575
 msgid "Cancel"
 msgstr ""
 
-#: src/prefs.js:539
+#: src/prefs.js:531
+msgid "Disabled"
+msgstr ""
+
+#: src/prefs.js:543
+msgid "Set"
+msgstr ""
+
+#: src/prefs.js:551
+msgid "Clear shortcut"
+msgstr ""
+
+#: src/prefs.js:566 src/prefs.js:572
+msgid "Press shortcut"
+msgstr ""
+
+#: src/prefs.js:567 src/prefs.js:573
+msgid "Press the key combination you want to use, or Escape to cancel."
+msgstr ""
+
+#: src/prefs.js:626
 msgid "Could not load logs. Run manually:"
 msgstr ""
 
-#: src/prefs.js:548
+#: src/prefs.js:635
 msgid "No recent logs found."
 msgstr ""
 

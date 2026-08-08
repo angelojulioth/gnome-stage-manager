@@ -1678,6 +1678,65 @@ test('_mergeApps folds source into target and every member shares the new compos
     assert.equal(JSON.parse(settings.get_string('arc-merge-map'))['appA'], arc._mergeMap.get('appA'));
 });
 
+test('_mergeApps keeps one segment per app across repeated merges', () => {
+    const settings = makeSettings();
+    const arc = new ArcSidebar(settings);
+    arc._loadMergeMap();
+
+    arc._mergeApps('appB', 'appA');   // {A,B}
+    arc._mergeApps('appC', 'appA');   // {A,B,C}
+    arc._mergeApps('appD', 'appC');   // {A,B,C,D}
+
+    const key = arc._mergeMap.get('appA');
+    const segs = key.split('|');
+    assert.deepEqual(segs, [...new Set(segs)],
+        `merge key re-embeds itself and grows without bound: ${key}`);
+    assert.deepEqual(segs.slice().sort(), ['appA', 'appB', 'appC', 'appD']);
+    ['appA', 'appB', 'appC', 'appD'].forEach(a =>
+        assert.equal(arc._mergeMap.get(a), key, `${a} should share the group key`));
+});
+
+test('_mergeApps key length stays bounded, not doubling per merge', () => {
+    const arc = new ArcSidebar(makeSettings());
+    arc._loadMergeMap();
+    for (let i = 1; i <= 8; i++) arc._mergeApps(`app${i}`, 'appRoot');
+    const key = arc._mergeMap.get('appRoot');
+    assert.ok(key.split('|').length === 9,
+        `expected 9 segments (root + 8), got ${key.split('|').length} — key is compounding`);
+});
+
+test('_loadMergeMap repairs an already-corrupted key from an earlier version', () => {
+    // What v2.0.3 wrote: the composite key folded back into itself repeatedly.
+    const corrupt = JSON.stringify({
+        appA: 'appA|appA|appB|appB|appC',
+        appB: 'appA|appA|appB|appB|appC',
+        appC: 'appA|appA|appB|appB|appC',
+    });
+    const arc = new ArcSidebar(makeSettings({ 'arc-merge-map': corrupt }));
+    arc._loadMergeMap();
+    const key = arc._mergeMap.get('appA');
+    assert.equal(key, 'appA|appB|appC', `stale duplicate segments were not collapsed: ${key}`);
+    ['appA', 'appB', 'appC'].forEach(a => assert.equal(arc._mergeMap.get(a), key));
+});
+
+test('_loadMergeMap drops phantom entries keyed by a composite group key', () => {
+    // The old bug also wrote entries whose "app id" was itself a group key,
+    // which inflated member counts so _unmergeApp could never clean up.
+    const corrupt = JSON.stringify({
+        appA: 'appA|appB',
+        appB: 'appA|appB',
+        'appA|appB': 'appA|appB',       // phantom: no app can have this id
+        'appA|appA|appB': 'appA|appB',  // phantom
+    });
+    const arc = new ArcSidebar(makeSettings({ 'arc-merge-map': corrupt }));
+    arc._loadMergeMap();
+
+    assert.equal(arc._mergeMap.size, 2, 'phantom composite-id entries should be dropped');
+    [...arc._mergeMap.keys()].forEach(k =>
+        assert.ok(!k.includes('|'), `phantom entry survived: ${k}`));
+    assert.equal(arc._mergeMap.get('appA'), 'appA|appB');
+});
+
 test('_unmergeApp removes the app and cleans up now-singleton groups', () => {
     const settings = makeSettings();
     const arc = new ArcSidebar(settings);
@@ -2248,6 +2307,36 @@ test('#10 unmaximizing after switching away still rejoins, and the stage survive
 
     switchWorkspace(sidebar, ws1);   // come back
     assert.ok(sidebar._findGroupForWindow(a), 'the window must still belong to a stage after returning');
+});
+
+test('#10 unmaximizing a parked window must not yank the user off their stage', () => {
+    const [ws0] = wsm.reset(2);
+    wsm.setActive(ws0);
+    const a = new FakeWindow('appA');
+    const b = new FakeWindow('appB');
+    const d = new FakeWindow('appD');
+    [a, b, d].forEach(w => ws0.adopt(w));
+
+    const sidebar = makeSidebar(makeSettings({ 'maximize-behavior': 'stage' }));
+    sidebar._initGroups();
+
+    d.minimize(); deliver(sidebar, [a, b, d]);              // park D as its own stage
+    sidebar._onWindowSizeChange(a, Meta.SizeChange.MAXIMIZE);
+    deliver(sidebar, [a, b, d]);                            // A promoted, B parked
+
+    const dStage = sidebar._groups.find(g => g.windows.has(d));
+    sidebar._swapToGroup(dStage);                           // user clicks D's card
+    deliver(sidebar, [a, b, d]);
+    assert.ok(sidebar._getActiveGroup().windows.has(d), 'precondition: user is on D\'s stage');
+
+    // A is parked off-screen; unmaximizing it is bookkeeping, not a navigation request.
+    sidebar._onWindowSizeChange(a, Meta.SizeChange.UNMAXIMIZE);
+    deliver(sidebar, [a, b, d]);
+
+    assert.ok(sidebar._getActiveGroup().windows.has(d),
+        'unmaximizing an off-screen window swapped the user away from the stage they chose');
+    assert.ok(sidebar._findGroupForWindow(a).windows.has(b),
+        'A should still have rejoined its origin stage in the background');
 });
 
 test('#10 unmaximize strands nothing when the origin stage died meanwhile', () => {
