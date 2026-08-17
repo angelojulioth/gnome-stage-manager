@@ -1,7 +1,7 @@
 # Tests
 
 GNOME Shell extensions can't be loaded outside a running shell, but most of the
-bugs in this one were never in the rendering code — they were in the group state
+bugs in this one were never in the rendering code; they were in the group state
 machine, the workspace bookkeeping and the show/hide state. That part is plain
 JavaScript, so it can be exercised offline.
 
@@ -30,13 +30,13 @@ reasons:
   *queues* the signal until the test calls `deliver()`. Emitting synchronously
   would hide exactly the swap races worth testing.
 
-Handlers and timers are reset between tests — a `MaximizeToWorkspace` left
+Handlers and timers are reset between tests; a `MaximizeToWorkspace` left
 connected by a failed assertion would otherwise also handle the next test's
 events.
 
 ## What is not covered
 
 Anything that needs real Clutter: actor layout, hit-testing, event bubbling,
-window clones. Those still need the manual pass in `CLAUDE.md` — install, log
+window clones. Those still need the manual pass in `CLAUDE.md`: install, log
 out/in, watch `journalctl --user -f -o cat /usr/bin/gnome-shell`, and toggle the
 extension off/on to confirm `disable()` runs clean.

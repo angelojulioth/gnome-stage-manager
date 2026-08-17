@@ -1,5 +1,5 @@
 /**
- * Stage Manager — macOS-style window grouping sidebar for GNOME Shell (46+, ESM).
+ * Stage Manager: macOS-style window grouping sidebar for GNOME Shell (46+, ESM).
  */
 
 import Meta from 'gi://Meta';
@@ -39,14 +39,21 @@ const CARD_HOVER_OPACITY = 255;   // fully opaque at the centre of the bell curv
 // Fallback stills are full-resolution textures, so only a handful are kept.
 const MAX_SNAPSHOTS = 8;
 const KEYBIND_NAME = 'toggle-sidebar';
-const APP_DRAG_THRESHOLD = 18;    // logical px — past this, a press+release is a drag, not a click
+const APP_DRAG_THRESHOLD = 18;    // logical px; past this, a press+release is a drag, not a click
 // Last-resort geometry when the compositor reports no monitor at all (see _getMon).
 const MON_FALLBACK = { x: 0, y: 0, width: 1920, height: 1080, index: 0 };
 
+// Durations are not lengths, so they are never scaled by _scaleFactor.
+const WS_SETTLE_MS = 50;              // let mutter settle after a workspace move
+const SWAP_EXPECT_TIMEOUT_MS = 2000;  // drop swap expectations a compositor never honoured
+const SWAP_REFRESH_MS = 120;
+const REFRESH_DEBOUNCE_MS = 200;
+const PREVIEW_DELAY_MS = 220;         // hover dwell before the preview popup opens
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
 
-/** Primary monitor, from Meta.Display — Main.layoutManager.primaryMonitor is
+// Helpers
+
+/** Primary monitor, from Meta.Display, because Main.layoutManager.primaryMonitor is
  *  empty under gnome-remote-desktop (issue #8). Always carries `index`, which
  *  _fullscreen() needs. Never returns null. */
 function _getMon() {
@@ -124,7 +131,7 @@ function _groupByApp(workspace, focusedWindow, mergeMap = new Map()) {
 }
 
 
-// ─── MaximizeToWorkspace ────────────────────────────────────────────────────
+// MaximizeToWorkspace
 
 class MaximizeToWorkspace {
     constructor(settings) {
@@ -132,7 +139,7 @@ class MaximizeToWorkspace {
         this._sigSources = new Set();
         this._timers = [];
         this._moved = new Set();
-        // win → origin Meta.Workspace, never an index — mutter reaps empty
+        // win → origin Meta.Workspace, never an index, because mutter reaps empty
         // workspaces, so a stored index can end up pointing at the wrong one.
         this._origin = new Map();
     }
@@ -183,7 +190,7 @@ class MaximizeToWorkspace {
         if (!win || !_isNormal(win)) return;
 
         if (change === Meta.SizeChange.MAXIMIZE) {
-            // Only the outbound move is opt-in — a window already parked must
+            // Only the outbound move is opt-in; a window already parked must
             // still be able to return even if the setting was since changed.
             if (this._settings.get_string('maximize-behavior') !== 'workspace') return;
             this._handleMaximize(win);
@@ -217,7 +224,7 @@ class MaximizeToWorkspace {
         this._moved.add(win);
         this._origin.set(win, cws);
         win.change_workspace_by_index(ti, false);
-        const id = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 50, () => {
+        const id = GLib.timeout_add(GLib.PRIORITY_DEFAULT, WS_SETTLE_MS, () => {
             this._untrackTimer(id);
             const ws = wsm.get_workspace_by_index(ti);
             if (ws) { ws.activate(global.get_current_time()); win.activate(global.get_current_time()); }
@@ -239,7 +246,7 @@ class MaximizeToWorkspace {
         if (win.get_workspace() === originWs) return;
 
         win.change_workspace(originWs);
-        const id = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 50, () => {
+        const id = GLib.timeout_add(GLib.PRIORITY_DEFAULT, WS_SETTLE_MS, () => {
             this._untrackTimer(id);
             if (this._workspaceAlive(originWs)) {
                 originWs.activate(global.get_current_time());
@@ -252,7 +259,7 @@ class MaximizeToWorkspace {
 }
 
 
-// ─── StageSidebar ───────────────────────────────────────────────────────────
+// StageSidebar
 
 class StageSidebar {
     constructor(settings) {
@@ -276,11 +283,11 @@ class StageSidebar {
         this._hoveredIdx = -1;
         this._keybindingAdded = false;
 
-        // Cached HiDPI / theme state — recomputed on relevant signals.
+        // Cached HiDPI / theme state, recomputed on relevant signals.
         this._scaleFactor = 1;
         this._themeClass = '';     // '' (dark default) or 'light'
 
-        // Group tracking ('groups' mode) — every group carries its workspace, so
+        // Group tracking ('groups' mode): every group carries its workspace, so
         // a stage never pulls in or minimizes windows from another workspace.
         this._groups = [];          // [{ id, ws, windows: Set }]
         this._activeIds = new Map();   // Meta.Workspace → active group id
@@ -293,7 +300,7 @@ class StageSidebar {
 
         this._signature = null;     // fingerprint of what is currently rendered
 
-        // Chrome registration state — the panel is re-registered when its
+        // Chrome registration state: the panel is re-registered when its
         // struts setting changes (see _applyChrome).
         this._chromeAdded = false;
         this._chromeStruts = false;
@@ -310,7 +317,7 @@ class StageSidebar {
         this._maxOrigin = new Map();
     }
 
-    // ── Signal & timer tracking ─────────────────────────────────────────
+    // Signal & timer tracking
     // Every signal must flow through _sig()/_cardSig() (connectObject, tracked
     // per-source) so disable() can disconnectObject(this) on each (EGO-L-003).
 
@@ -329,8 +336,8 @@ class StageSidebar {
         this._cardSigSources.clear();
     }
 
-    // ── Settings getters ──
-    // User "pixel" settings are logical units (like CSS px) — scaled to stage
+    // Settings getters
+    // User "pixel" settings are logical units (like CSS px), scaled to stage
     // (physical) coordinates here.
     get _PANEL_W() { return this._settings.get_int('sidebar-width') * this._scaleFactor; }
     get _SLIDE_MS() { return this._settings.get_int('animation-duration'); }
@@ -344,12 +351,12 @@ class StageSidebar {
     /** Left/right stack the cards in a column; bottom lays them in a row.
      *  Everything position-dependent branches on this, not on _POS. */
     get _VERTICAL() { return this._POS !== 'bottom'; }
-    /** Perspective tilt direction — mirrored on the right so cards still
+    /** Perspective tilt direction, mirrored on the right so cards still
      *  face into the screen instead of away from it. */
     get _ROT_SIGN() { return this._POS === 'right' ? -1 : 1; }
 
-    // ── Position-aware geometry (left = default; right mirrors, bottom rotates).
-    // sidebar-width is the panel's THICKNESS on whichever edge it occupies. ──
+    // Position-aware geometry (left = default; right mirrors, bottom rotates).
+    // sidebar-width is the panel's THICKNESS on whichever edge it occupies.
     _panelSize(mon, topH) {
         return this._VERTICAL
             ? [this._PANEL_W, mon.height - topH]
@@ -400,7 +407,7 @@ class StageSidebar {
     }
 
     disable() {
-        // Timers first — must run before any actor destroy so timer callbacks
+        // Timers first: must run before any actor destroy so timer callbacks
         // can't fire against half-destroyed state.
         this._killRefreshTimer();
         this._killHideTimer();
@@ -450,7 +457,7 @@ class StageSidebar {
         }
     }
 
-    // ── Build UI ──
+    // Build UI
 
     _build() {
         const mon = _getMon();
@@ -459,7 +466,7 @@ class StageSidebar {
         const [panelW, panelH] = this._panelSize(mon, topH);
         const [edgeX, edgeY, edgeW, edgeH] = this._edgeGeom(mon, topH);
 
-        // Edge trigger — reactive by necessity, kept hidden except when needed
+        // Edge trigger: reactive by necessity, kept hidden except when needed
         // (_syncEdge), or it eats clicks/resize-grabs along the screen edge.
         this._edge = new St.Widget({
             reactive: true,
@@ -485,11 +492,11 @@ class StageSidebar {
             });
             this._timers.push(this._edgeTimer);
         });
-        // Pointer left before the dwell elapsed — it was a brush-past, not an
+        // Pointer left before the dwell elapsed; it was a brush-past, not an
         // intent to open (issue #2: apps with their own left-edge hover UI).
         this._sig(this._edge, 'leave-event', () => this._killEdgeTimer());
 
-        // reactive MUST stay false (here and on the scroll view) — a reactive
+        // reactive MUST stay false (here and on the scroll view); a reactive
         // full-height panel would swallow every click/scroll in its column.
         this._panel = new St.Widget({
             reactive: false,
@@ -500,7 +507,7 @@ class StageSidebar {
         this._visible = false;
         this._applyChrome();
 
-        // ScrollView → BoxLayout. EXTERNAL, not NEVER, on the scrolling axis —
+        // ScrollView → BoxLayout. EXTERNAL, not NEVER, on the scrolling axis:
         // NEVER gives the adjustment no range, so scrolling could never move it.
         // EXTERNAL keeps the range and just hides the bar. The axis follows the
         // edge: a bottom strip scrolls horizontally, a side column vertically.
@@ -515,7 +522,7 @@ class StageSidebar {
         this._panel.add_child(this._scroll);
 
         const sf = this._scaleFactor;
-        // Unlike the panel and scroll view, the card column IS reactive — the
+        // Unlike the panel and scroll view, the card column IS reactive: the
         // smallest region that fixes scrolling without swallowing clicks elsewhere.
         this._box = new St.BoxLayout({
             reactive: true,
@@ -529,7 +536,7 @@ class StageSidebar {
         this._scroll.set_child(this._box);
 
         // Bound on the column, on each card (_wireCardEvents) and on the scroll
-        // view — never rely on one alone, since the scroll view isn't reactive.
+        // view; never rely on one alone, since the scroll view isn't reactive.
         this._sig(this._box, 'scroll-event', (_actor, event) => this._onScrollEvent(event));
         this._sig(this._scroll, 'scroll-event', (_actor, event) => this._onScrollEvent(event));
         this._sig(this._box, 'button-release-event', () => { this._endAppDragCandidate(); return Clutter.EVENT_PROPAGATE; });
@@ -585,7 +592,7 @@ class StageSidebar {
     /** Scroll the card list. Bound on the scroll view and every card; EVENT_STOP
      *  from whichever fires first stops the other from moving the adjustment twice. */
     _onScrollEvent(event) {
-        // The scrolling axis follows the edge — a bottom strip scrolls its
+        // The scrolling axis follows the edge: a bottom strip scrolls its
         // hadjustment, a side column its vadjustment.
         const adj = this._VERTICAL ? this._scroll?.vadjustment : this._scroll?.hadjustment;
         if (!adj) return Clutter.EVENT_PROPAGATE;
@@ -638,7 +645,7 @@ class StageSidebar {
     }
 
     /** Resolve a pending drag on release; true = consumed, caller skips its
-     *  click-activate. Target is hit-tested live — Clutter's implicit grab means release always fires on the origin card, not the pointer's target. */
+     *  click-activate. Target is hit-tested live, because Clutter's implicit grab means release always fires on the origin card, not the pointer's target. */
     _endAppDragCandidate() {
         const drag = this._appDrag;
         if (!drag) return false;
@@ -682,13 +689,13 @@ class StageSidebar {
         return actor === this._panel || this._panel.contains(actor);
     }
 
-    /** ease() property for the perspective tilt — Y axis for a column, X for a
+    /** ease() property for the perspective tilt: Y axis for a column, X for a
      *  bottom strip, so the tilt always leans into the screen. */
     _rotProp(angle) {
         return this._VERTICAL ? { rotation_angle_y: angle } : { rotation_angle_x: angle };
     }
 
-    /** `vertical` is deprecated in favor of `orientation` on GNOME 48+ — set
+    /** `vertical` is deprecated in favor of `orientation` on GNOME 48+, so set
      *  whichever the running shell offers. */
     _setOrientation(box, vertical) {
         if ('orientation' in St.BoxLayout.prototype)
@@ -698,7 +705,7 @@ class StageSidebar {
     }
 
     /** Show the edge trigger only while actually needed (off screen, not
-     *  fullscreen) — otherwise it steals input along the screen edge. */
+     *  fullscreen); otherwise it steals input along the screen edge. */
     _syncEdge() {
         if (!this._edge) return;
         const wanted = !this._visible && !this._fullscreen();
@@ -706,7 +713,7 @@ class StageSidebar {
         else this._edge.hide();
     }
 
-    // ── Layout rebuild (monitor / scale / size setting change) ───────────
+    // Layout rebuild (monitor / scale / size setting change)
 
     _rebuildLayout() {
         if (!this._panel || !this._edge || !this._scroll) return;
@@ -719,7 +726,7 @@ class StageSidebar {
         this._edge.set_size(edgeW, edgeH);
         this._edge.set_position(edgeX, edgeY);
 
-        // The edge can change axis, not just size — re-apply orientation and the
+        // The edge can change axis, not just size, so re-apply orientation and the
         // scrolling axis so a left↔bottom switch doesn't keep the old ones.
         const sf = this._scaleFactor;
         this._setOrientation(this._box, vertical);
@@ -731,7 +738,7 @@ class StageSidebar {
         this._scroll.hscrollbar_policy = vertical ? St.PolicyType.NEVER : St.PolicyType.EXTERNAL;
         this._scroll.vscrollbar_policy = vertical ? St.PolicyType.EXTERNAL : St.PolicyType.NEVER;
 
-        // Drop any in-flight slide first — it's aimed at the old edge and
+        // Drop any in-flight slide first; it's aimed at the old edge and
         // would otherwise leave the panel at a stale offset.
         this._panel.remove_all_transitions();
         this._panel.set_size(panelW, panelH);
@@ -754,7 +761,7 @@ class StageSidebar {
         this._themeClass = (cs === St.SystemColorScheme.PREFER_LIGHT) ? 'light' : '';
     }
 
-    // ── Wire signals ──
+    // Wire signals
 
     _wire() {
         this._sig(global.window_manager, 'map', (_wm, actor) => {
@@ -839,7 +846,7 @@ class StageSidebar {
         });
     }
 
-    // ── Group management (for 'groups' mode) ─────────────────────────────
+    // Group management (for 'groups' mode)
 
     _activeWs() {
         return global.workspace_manager.get_active_workspace();
@@ -945,7 +952,7 @@ class StageSidebar {
             g.ws === ws && g.id !== activeId && this._groupWindows(g).length > 0);
     }
 
-    /** Windows of `group` still on its workspace, most recent first — a window
+    /** Windows of `group` still on its workspace, most recent first; a window
      *  dragged elsewhere is skipped rather than minimized/cloned from the wrong stage. */
     _groupWindows(group) {
         return [...group.windows]
@@ -961,12 +968,12 @@ class StageSidebar {
         return !!group && this._activeIds.get(group.ws) === group.id;
     }
 
-    // ── App merge/un-merge ('apps' mode) ─────────────────────────────
+    // App merge/un-merge ('apps' mode)
 
     _loadAppMergeMap() {
         const raw = this._settings.get_string('app-merge-map');
         let obj = {};
-        // JSON.parse genuinely throws on malformed input (hand-edited dconf) —
+        // JSON.parse genuinely throws on malformed input (hand-edited dconf):
         // the one deliberate exception to this file's zero-try-catch rule.
         try { obj = JSON.parse(raw); } catch (_e) { obj = {}; }
         this._appMergeMap = new Map(Object.entries(obj));
@@ -978,7 +985,7 @@ class StageSidebar {
     }
 
     /** Point sourceAppId at targetKey, flattening anyone already pointing at
-     *  sourceAppId onto targetKey — keeps every entry a single hop. Map-only; callers save once. */
+     *  sourceAppId onto targetKey, keeping every entry a single hop. Map-only; callers save once. */
     _applyMerge(sourceAppId, targetKey) {
         if (sourceAppId === targetKey) return;
         this._appMergeMap.set(sourceAppId, targetKey);
@@ -1002,7 +1009,7 @@ class StageSidebar {
         return win.get_workspace();
     }
 
-    /** Drop `win` from a stage whose workspace it no longer lives on — otherwise
+    /** Drop `win` from a stage whose workspace it no longer lives on; otherwise
      *  it ends up a member of two stages at once. */
     _evictIfMoved(win) {
         const group = this._findGroupForWindow(win);
@@ -1033,11 +1040,11 @@ class StageSidebar {
 
     _onWindowMinimize(win) {
         if (!_isNormal(win)) return;
-        // Our own swap minimized this one — consume it, it is not the user
+        // Our own swap minimized this one, so consume it; it is not the user
         // parking a window. (The swap already captured its snapshot.)
         if (this._expectMinimize.delete(win)) return;
 
-        // Grab a still before the actor goes quiet — best-effort, the icon
+        // Grab a still before the actor goes quiet. Best-effort, the icon
         // fallback covers it if the compositor already unmapped the window.
         this._captureSnapshot(win);
 
@@ -1046,7 +1053,7 @@ class StageSidebar {
             this._evictIfMoved(win);
             const group = this._findGroupForWindow(win);
             if (!group) {
-                // Held by no stage — park it as its own stage on the workspace it lives on.
+                // Held by no stage, so park it as its own stage on the workspace it lives on.
                 if (ws) this._groups.push({ id: this._nextGid++, ws, windows: new Set([win]) });
             } else if (this._isActiveGroup(group)) {
                 group.windows.delete(win);
@@ -1091,7 +1098,7 @@ class StageSidebar {
 
     /** Opt-in (issue #10): maximizing gives a window a stage of its own and
      *  parks its former stage-mates as a card; unmaximizing returns it.
-     *  Groups mode only — apps/workspaces modes derive their stages elsewhere. */
+     *  Groups mode only; apps/workspaces modes derive their stages elsewhere. */
     _onWindowSizeChange(win, change) {
         if (!_isNormal(win)) return;
         // Only the outbound promotion is gated (same rule as maximize-to-
@@ -1100,7 +1107,7 @@ class StageSidebar {
         if (change === Meta.SizeChange.UNMAXIMIZE) { this._returnFromOwnGroup(win); return; }
         if (change !== Meta.SizeChange.MAXIMIZE) return;
 
-        // One enum, so 'workspace' and 'stage' can no longer both fire — which
+        // One enum, so 'workspace' and 'stage' can no longer both fire, which
         // used to park the stage-mates and then strand an empty stage.
         if (this._settings.get_string('maximize-behavior') !== 'stage') return;
         if (this._settings.get_string('sidebar-mode') !== 'groups') return;
@@ -1109,7 +1116,7 @@ class StageSidebar {
 
     _promoteToOwnGroup(win) {
         const group = this._findGroupForWindow(win);
-        // Already alone on its stage — promoting would just renumber it.
+        // Already alone on its stage, so promoting would just renumber it.
         if (!group || this._groupWindows(group).length < 2) return;
         // _swapToGroup only acts on the active workspace, so promoting a
         // background stage would split it and never park anything.
@@ -1129,7 +1136,7 @@ class StageSidebar {
 
         const origin = this._groups.find(g => g.id === originId);
         // The origin stage can be gone (its windows were all closed) or the
-        // window dragged away since — leave it where it is rather than rebuild.
+        // window dragged away since, so leave it where it is rather than rebuild.
         if (!origin || origin.ws !== this._workspaceOf(win)) return;
 
         const promoted = this._findGroupForWindow(win);
@@ -1138,7 +1145,7 @@ class StageSidebar {
         promoted?.windows.delete(win);
         origin.windows.add(win);
         this._cleanupEmptyGroups();
-        // Only follow the window home if the user is still on its stage —
+        // Only follow the window home if the user is still on its stage;
         // unmaximizing a parked window is bookkeeping, not a navigation request.
         if (onPromoted) this._swapToGroup(origin);
         else this._scheduleRefresh();
@@ -1194,7 +1201,7 @@ class StageSidebar {
         // Safety net only: a compositor that refuses a minimize would otherwise
         // leave a stale expectation behind that swallows the user's next one.
         this._killSwapTimer();
-        this._swapTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 2000, () => {
+        this._swapTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, SWAP_EXPECT_TIMEOUT_MS, () => {
             this._untrackTimer(this._swapTimer); this._swapTimer = null;
             this._expectMinimize.clear();
             this._expectUnminimize.clear();
@@ -1203,10 +1210,10 @@ class StageSidebar {
         this._timers.push(this._swapTimer);
 
         this._hovered = false;
-        // Reuses the single _refreshTimer slot — killing it first means a swap
+        // Reuses the single _refreshTimer slot; killing it first means a swap
         // refresh and a debounced refresh can never both be queued.
         this._killRefreshTimer();
-        this._refreshTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 120, () => {
+        this._refreshTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, SWAP_REFRESH_MS, () => {
             this._untrackTimer(this._refreshTimer); this._refreshTimer = null;
             if (this._visible) this._refresh();
             return GLib.SOURCE_REMOVE;
@@ -1217,7 +1224,7 @@ class StageSidebar {
             this._scheduleHide();
     }
 
-    // ── Fullscreen ──
+    // Fullscreen
 
     _fullscreen() {
         return global.display.get_monitor_in_fullscreen(_getMon().index);
@@ -1246,7 +1253,7 @@ class StageSidebar {
         }
     }
 
-    // ── Keybinding ──
+    // Keybinding
 
     _addKeybinding() {
         Main.wm.addKeybinding(
@@ -1270,9 +1277,9 @@ class StageSidebar {
         else this._show();
     }
 
-    // ── Show / Hide ──
+    // Show / Hide
 
-    // `_visible` alone gates entry — no separate `_animating` flag. Gating on
+    // `_visible` alone gates entry, with no separate `_animating` flag. Gating on
     // one meant a pointer returning mid-slide-out was dropped with nothing to retry.
     _show() {
         if (this._visible || !this._panel) return;
@@ -1289,7 +1296,7 @@ class StageSidebar {
             x: vx, y: vy,
             duration: this._SLIDE_MS,
             mode: Clutter.AnimationMode.EASE_OUT_QUAD,
-            // Claimed only once settled — mid-slide would resize every window on every frame.
+            // Claimed only once settled; mid-slide would resize every window on every frame.
             onComplete: () => this._applyChrome(),
         });
     }
@@ -1330,9 +1337,9 @@ class StageSidebar {
 
     _scheduleRefresh() {
         // EGO-L-007: must remove any in-flight timer before re-arming. Inlined
-        // (not via _killRefreshTimer) — shexli wants the remove textually adjacent.
+        // (not via _killRefreshTimer), because shexli wants the remove textually adjacent.
         if (this._refreshTimer) { GLib.source_remove(this._refreshTimer); this._untrackTimer(this._refreshTimer); this._refreshTimer = null; }
-        this._refreshTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 200, () => {
+        this._refreshTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, REFRESH_DEBOUNCE_MS, () => {
             this._untrackTimer(this._refreshTimer); this._refreshTimer = null;
             if (this._visible && !this._hovered) this._refresh();
             return GLib.SOURCE_REMOVE;
@@ -1340,19 +1347,19 @@ class StageSidebar {
         this._timers.push(this._refreshTimer);
     }
 
-    // ── Render ──────────────────────────────────────────────────────────
+    // Render
 
     _refresh() {
         if (!this._box) return;
 
-        // Nothing to redraw? Then don't — every rebuild recreates a window clone
+        // Nothing to redraw? Then don't; every rebuild recreates a window clone
         // per thumbnail, and this runs on every focus change.
         const signature = this._renderSignature();
         if (signature === this._signature) return;
         this._signature = signature;
 
         // Cards about to be destroyed may be under the pointer with no leave-event
-        // coming — tear down hover state here or `_hovered` sticks true forever.
+        // coming, so tear down hover state here or `_hovered` sticks true forever.
         this._killHoverTimer();
         this._destroyPreview();
         this._hovered = false;
@@ -1387,7 +1394,7 @@ class StageSidebar {
             this._settings.get_boolean('show-group-count') ? 1 : 0,
         ];
 
-        // Window ids alone aren't enough — a card's shape follows its front
+        // Window ids alone aren't enough: a card's shape follows its front
         // window, so a resize must count too (bucketed to skip per-pixel rebuilds).
         const ids = wins => {
             const shape = wins.length > 0
@@ -1409,7 +1416,7 @@ class StageSidebar {
             for (const g of groups)
                 parts.push(`${g.key}:${ids(g.windows)}`);
         } else if (mode === 'all-windows') {
-            // Every window is its own card here, so each one's shape matters —
+            // Every window is its own card here, so each one's shape matters;
             // ids() only buckets the front window's aspect.
             const wsm = global.workspace_manager;
             const focused = global.display.get_focus_window();
@@ -1448,7 +1455,7 @@ class StageSidebar {
         this._addOverflowLabel(all.length - MAX_GROUPS);
     }
 
-    /** Every window on every workspace, one card each. Deliberately read-only —
+    /** Every window on every workspace, one card each. Deliberately read-only:
      *  never minimizes/regroups/moves a window; click just activates and lets mutter switch workspace. */
     _refreshAllWindows() {
         const wsm = global.workspace_manager;
@@ -1460,7 +1467,7 @@ class StageSidebar {
         for (let i = 0; i < n; i++) {
             const ws = wsm.get_workspace_by_index(i);
             if (!ws) continue;
-            // The focused window is already in front of you — showing it would
+            // The focused window is already in front of you, so showing it would
             // just be a card of what you are looking at.
             const wins = ws.list_windows()
                 .filter(w => _isNormal(w) && w !== focused)
@@ -1482,7 +1489,7 @@ class StageSidebar {
         this._addOverflowLabel(total - shown);
     }
 
-    /** Workspace heading in all-windows mode. Not pushed to `_cards` — it is a
+    /** Workspace heading in all-windows mode. Not pushed to `_cards`; it is a
      *  label, not a hover/bell-curve target (same rule as the overflow label). */
     _addWorkspaceHeader(wsIndex) {
         const text = _('Workspace %d').replace('%d', `${wsIndex + 1}`);
@@ -1535,7 +1542,7 @@ class StageSidebar {
     }
 
     /** Show "+N" for stages beyond MAX_GROUPS instead of dropping them silently.
-     *  Not pushed to `_cards` — it's a label, not a hover/bell-curve target. */
+     *  Not pushed to `_cards`; it's a label, not a hover/bell-curve target. */
     _addOverflowLabel(hidden) {
         if (hidden <= 0) return;
         if (!this._box) return;
@@ -1568,7 +1575,7 @@ class StageSidebar {
         this._box.destroy_all_children();
     }
 
-    // ── Entrance animation ──
+    // Entrance animation
 
     _animateCardsEntrance() {
         const base = this._BASE_SCALE;
@@ -1577,12 +1584,11 @@ class StageSidebar {
         for (let i = 0; i < this._cards.length; i++) {
             const card = this._cards[i];
 
-            // Start invisible, shifted down
             card.set_opacity(0);
             card.translation_y = 24;
             card.set_scale(base * 0.82, base * 0.82);
 
-            // Perspective goes on the CARD, not the thumbnail — rotating only the
+            // Perspective goes on the CARD, not the thumbnail, since rotating only the
             // child let content spill outside the card's pill background. A bottom
             // strip tilts around X so the cards still lean into the screen.
             if (this._VERTICAL) card.rotation_angle_y = angle;
@@ -1600,10 +1606,10 @@ class StageSidebar {
         }
     }
 
-    // ── Card builders ───────────────────────────────────────────────────
+    // Card builders
 
     /** Card wrapper with a frosted-glass pill background (see stylesheet.css).
-     *  The only reactive actor in the sidebar — the panel passes input through. */
+     *  The only reactive actor in the sidebar; the panel passes input through. */
     _wrapCard() {
         const card = new St.BoxLayout({
             reactive: true,
@@ -1611,7 +1617,7 @@ class StageSidebar {
             style_class: this._cls('stage-card'),
         });
         // Always vertical: the icon row sits under the thumbnail whatever edge
-        // the panel is on — only the card *column* changes axis.
+        // the panel is on; only the card *column* changes axis.
         this._setOrientation(card, true);
         return card;
     }
@@ -1649,7 +1655,6 @@ class StageSidebar {
             if (seenApps.size > 0) card.add_child(iconBox);
         }
 
-        // Scale pivot at center of card
         card.set_pivot_point(0.5, 0.5);
 
         const idx = this._cards.length;
@@ -1738,7 +1743,7 @@ class StageSidebar {
         return inner;
     }
 
-    /** Size of `win`'s compositor actor — the whole thing, shadow included. */
+    /** Size of `win`'s compositor actor: the whole thing, shadow included. */
     _windowGeometry(win) {
         const actor = win.get_compositor_private?.();
         if (!actor) return null;
@@ -1786,7 +1791,7 @@ class StageSidebar {
         return null;
     }
 
-    /** Shape of the display — what a maximized window looks like. */
+    /** Shape of the display: what a maximized window looks like. */
     _monitorAspect() {
         const mon = _getMon();
         return (mon && this._clampAspect(mon.width / mon.height)) ??
@@ -1794,7 +1799,7 @@ class StageSidebar {
     }
 
     /** Thumbnail size for a stack of `count` windows, derived from the sidebar
-     *  width — a fixed THUMB_W doesn't fit once fan-out + card padding are added. */
+     *  width; a fixed THUMB_W doesn't fit once fan-out + card padding are added. */
     _thumbSize(count, aspect = null) {
         const sf = this._scaleFactor;
         const layers = Math.min(Math.max(count, 1), MAX_STACK);
@@ -1879,7 +1884,7 @@ class StageSidebar {
         const children = container.get_children();
         container._frontLayer = children.length > 0 ? children[children.length - 1] : null;
 
-        // Count badge — bottom-left of front layer
+        // Count badge: bottom-left of front layer
         if (windows.length > 1 && this._settings.get_boolean('show-group-count')) {
             const badge = new St.Label({
                 text: `${windows.length}`,
@@ -1943,9 +1948,9 @@ class StageSidebar {
         return card;
     }
 
-    // ── Bell curve scaling ──────────────────────────────────────────────
+    // Bell curve scaling
 
-    /** Ease all cards back to resting state. Eases rather than snaps — snapping
+    /** Ease all cards back to resting state. Eases rather than snaps, because snapping
      *  cancelled a card's own in-flight leave-event ease, causing a visible jump. */
     _resetAllCardScales() {
         const base = this._BASE_SCALE;
@@ -1986,11 +1991,11 @@ class StageSidebar {
         }
     }
 
-    // ── Card events ─────────────────────────────────────────────────────
+    // Card events
 
     _wireCardEvents(card, thumb, windows, cardIdx) {
         // Cards are the only reactive actors in the sidebar, so the wheel has to
-        // be handled here — not just on the (non-reactive) scroll view.
+        // be handled here, not just on the (non-reactive) scroll view.
         this._cardSig(card, 'scroll-event', (_actor, event) => this._onScrollEvent(event));
 
         this._cardSig(card, 'enter-event', () => {
@@ -2000,16 +2005,15 @@ class StageSidebar {
 
             this._applyBellCurve(cardIdx);
 
-            // Glow on front layer + highlight card pill — use style classes
+            // Glow on front layer + highlight card pill: use style classes
             // so light/dark theme variants apply.
             const front = thumb._frontLayer;
             if (front)
                 front.set_style_class_name(this._cls('stage-thumb-layer-front-hover'));
             card.set_style_class_name(this._cls('stage-card', 'stage-card-hover'));
 
-            // Preview after short delay
             this._killHoverTimer();
-            this._hoverTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 220, () => {
+            this._hoverTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, PREVIEW_DELAY_MS, () => {
                 this._untrackTimer(this._hoverTimer); this._hoverTimer = null;
                 this._showPreview(card, windows);
                 return GLib.SOURCE_REMOVE;
@@ -2021,7 +2025,6 @@ class StageSidebar {
             this._hoveredIdx = -1;
             this._resetAllCardScales();
 
-            // Restore base style classes
             const front = thumb._frontLayer;
             if (front)
                 front.set_style_class_name(this._cls('stage-thumb-layer'));
@@ -2031,7 +2034,7 @@ class StageSidebar {
             this._destroyPreview();
 
             // Auto-hide is driven from the cards too, since they're the only
-            // reactive actors now — both this and the panel's handler running is harmless.
+            // reactive actors now; both this and the panel's handler running is harmless.
             if (!this._insidePanel(this._crossingRelated(event))) {
                 this._hovered = false;
                 if (this._settings.get_boolean('sidebar-auto-hide'))
@@ -2040,7 +2043,7 @@ class StageSidebar {
         });
     }
 
-    // ── Preview ─────────────────────────────────────────────────────────
+    // Preview
 
     /** Larger preview of ALL windows in the group, tiled vertically. Falls back
      *  to an icon grid when no compositor actors are available. */
@@ -2051,7 +2054,6 @@ class StageSidebar {
         const topH = Main.panel ? Main.panel.height : 0;
         const [cardX, cardY] = card.get_transformed_position();
 
-        // Collect windows that have compositor actors (cloneable)
         const cloneable = windows.filter(w => !!w.get_compositor_private());
 
         if (cloneable.length === 0) {
@@ -2177,8 +2179,8 @@ class StageSidebar {
         }
     }
 
-    // ── Util ──
-    // Per-timer kill helpers — named explicitly so shexli (EGO-L-004) can trace
+    // Util
+    // Per-timer kill helpers, named explicitly so shexli (EGO-L-004) can trace
     // GLib.source_remove(this._fooTimer) statically.
 
     _untrackTimer(id) {
@@ -2206,7 +2208,7 @@ class StageSidebar {
         if (this._edgeTimer) { GLib.source_remove(this._edgeTimer); this._untrackTimer(this._edgeTimer); this._edgeTimer = null; }
     }
 
-    // ── Show-on-empty-workspace ──────────────────────────────────────────
+    // Show-on-empty-workspace
 
     /**
       * Whether the active workspace has any visible (non-minimized) normal
@@ -2241,21 +2243,19 @@ class StageSidebar {
         if (this._fullscreen()) return;
 
         if (this._shouldForceShow()) {
-            // Empty desktop — make sure sidebar is visible.
             this._killHideTimer();
             if (!this._visible) this._show();
         } else if (this._settings.get_boolean('sidebar-auto-hide') &&
             this._visible && !this._hovered) {
-            // Desktop is no longer empty and auto-hide is on — recede.
             this._scheduleHide();
         }
     }
 }
 
 
-// ─── ArcSidebar ─────────────────────────────────────────────────────────────
+// ArcSidebar
 // Carousel-style sidebar; owns its own actors/settings/timers/signals, never
-// shares state with StageSidebar. Spec: docs/superpowers/specs/2026-07-30-arc-sidebar-design.md.
+// shares state with StageSidebar.
 
 const ARC_BASE_GRID_W    = 158;
 const ARC_BASE_GRID_H    = 89;
@@ -2265,10 +2265,19 @@ const ARC_PAD_H          = 12;
 const ARC_MAX_ANGLE      = 52;
 const ARC_SCROLL_FRICTION = 0.82;
 const ARC_SCROLL_MIN_VEL  = 0.005;
-const ARC_DRAG_THRESHOLD  = 18;   // logical px — scaled by _scaleFactor before use
-const ARC_GHOST_SIZE      = 100;  // logical px — scaled by _scaleFactor before use
+const ARC_DRAG_THRESHOLD  = 18;   // logical px, scaled by _scaleFactor before use
+const ARC_GHOST_SIZE      = 100;  // logical px, scaled by _scaleFactor before use
 const ARC_RADIUS_RATIO   = 0.48;  // fraction of workarea height/width
 const ARC_MIN_RADIUS     = 200;   // logical px floor for a degenerate (very short) workarea
+
+// Durations, unscaled. Fan-out opens faster than it closes so a pointer
+// crossing a card doesn't flicker it open and shut.
+const ARC_FAN_OPEN_MS        = 350;
+const ARC_FAN_CLOSE_MS       = 470;
+const ARC_PERSIST_POLL_MS    = 500;
+const ARC_REFRESH_DEBOUNCE_MS = 50;
+const ARC_DRAG_POLL_MS       = 50;
+const ARC_FRAME_MS           = 16;   // ~60 fps tick for momentum and eased scroll
 
 const ARC_KEYBINDINGS = [
     'toggle-sidebar',
@@ -2368,7 +2377,7 @@ class ArcSidebar {
         this._settings = null;
     }
 
-    // ── Signal / timer helpers (same pattern as StageSidebar, EGO-L-003/004) ──
+    // Signal / timer helpers (same pattern as StageSidebar, EGO-L-003/004)
 
     _sig(obj, signal, cb) {
         obj.connectObject(signal, cb, this);
@@ -2412,14 +2421,12 @@ class ArcSidebar {
 
     _armPersistTimer() {
         this._killPersistTimer();
-        this._persistTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 500, () => {
+        this._persistTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, ARC_PERSIST_POLL_MS, () => {
             this._checkPersistence();
             return GLib.SOURCE_CONTINUE;
         });
         this._timers.push(this._persistTimer);
     }
-
-    // ── Filled in by later tasks ──
 
     _pickMonitor() { return _getMon(); }
 
@@ -2764,7 +2771,7 @@ class ArcSidebar {
             const app = tracker.get_window_app(win);
             if (!app) return;
 
-            // Anchor to the card's own fitted size (cW/cH), not the nominal box —
+            // Anchor to the card's own fitted size (cW/cH), not the nominal box:
             // a letterboxed card is smaller, so anchoring to the box's far edge stranded the badge in blank space.
             let bx, by;
             if (this._pos === 'right') { bx = padH + cW - sz + ovf - i * dX; by = cH - sz + ovf - i * dY; }
@@ -2798,7 +2805,7 @@ class ArcSidebar {
         const geo = this._geo;
 
         // Not clipped: cards extend past this nominal box as they curve away
-        // from the front — clipping would hide cards the angle cull already chose to show.
+        // from the front; clipping would hide cards the angle cull already chose to show.
         this._panel = new St.Widget({
             reactive: true, clip_to_allocation: false,
             width: geo.panelW, height: geo.panelH,
@@ -2810,7 +2817,7 @@ class ArcSidebar {
         this._edge.set_position(geo.edgeX, geo.edgeY);
         Main.layoutManager.addChrome(this._edge, { trackFullscreen: false });
 
-        // Same dwell as StageSidebar — see the enter-event there and issue #2.
+        // Same dwell as StageSidebar; see the enter-event there and issue #2.
         this._sig(this._edge, 'enter-event', () => {
             if (this._isVisible) return;
             const delay = this._EDGE_DELAY_MS;
@@ -2853,7 +2860,7 @@ class ArcSidebar {
 
     _scheduleRefresh() {
         this._killRefreshTimer();
-        this._refreshTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 50, () => {
+        this._refreshTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, ARC_REFRESH_DEBOUNCE_MS, () => {
             this._untrackTimer(this._refreshTimer); this._refreshTimer = null;
             this._buildGroups();
             this._redraw();
@@ -2943,7 +2950,7 @@ class ArcSidebar {
             this._panel.set_child_above_sibling(container, null);
             const g = container._grid;
             if (g && !g._fanned && !g._fanTimer) {
-                g._fanTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 350, () => {
+                g._fanTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, ARC_FAN_OPEN_MS, () => {
                     this._untrackTimer(g._fanTimer); g._fanTimer = null;
                     if (container.hover) {
                         const { shift, isBottom } = this._positionFan(g);
@@ -2958,7 +2965,7 @@ class ArcSidebar {
             this._killGridTimers(g);
             if (g?._fanned) {
                 if (g._closeTimer) { GLib.source_remove(g._closeTimer); this._untrackTimer(g._closeTimer); g._closeTimer = null; }
-                g._closeTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 470, () => {
+                g._closeTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, ARC_FAN_CLOSE_MS, () => {
                     this._untrackTimer(g._closeTimer); g._closeTimer = null;
                     if (!container.hover) {
                         this._positionStack(g);
@@ -3042,10 +3049,10 @@ class ArcSidebar {
     }
 
     /** Safety net: resolves the drag from live pointer-button state, not just
-     *  release-event — covers the origin card dying mid-drag, which kills Clutter's implicit grab before release fires. */
+     *  release-event. Covers the origin card dying mid-drag, which kills Clutter's implicit grab before release fires. */
     _armDragPollTimer() {
         this._killDragPollTimer();
-        this._dragPollTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 50, () => {
+        this._dragPollTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, ARC_DRAG_POLL_MS, () => {
             if (!this._drag) { this._untrackTimer(this._dragPollTimer); this._dragPollTimer = null; return GLib.SOURCE_REMOVE; }
             const [px, py, mask] = global.get_pointer();
             if (mask & Clutter.ModifierType.BUTTON1_MASK) return GLib.SOURCE_CONTINUE;
@@ -3104,7 +3111,7 @@ class ArcSidebar {
         const sourceAppId = sourceGroup.app.get_id ? sourceGroup.app.get_id() : sourceGroup.appIds[0];
         const activeAppId = activeApp?.get_id();
 
-        // No distinct app to merge into — dropping outside the panel still
+        // No distinct app to merge into, so dropping outside the panel still
         // opens the group rather than stranding it mid-drag.
         if (!activeApp || activeAppId === sourceAppId) {
             this._activateGroup(sourceGroup);
@@ -3168,7 +3175,7 @@ class ArcSidebar {
     _cancelDrag() {
         this._killDragPollTimer();
         this._killDragGhost();
-        // Unconditional — disable() calls this, and an early return here would
+        // Unconditional: disable() calls this, and an early return here would
         // read as selective disable (same fix as _cancelAppDrag).
         this._drag = null;
         global.stage.disconnectObject(this);
@@ -3190,10 +3197,10 @@ class ArcSidebar {
 
     _startPhysics() {
         this._killScrollTimer();
-        // EGO-L-007: inlined, not via _killPhysicsTimer — shexli wants the
+        // EGO-L-007: inlined, not via _killPhysicsTimer, because shexli wants the
         // remove textually adjacent to this re-arm (see _scrollTo() below).
         if (this._physicsTimer) { GLib.source_remove(this._physicsTimer); this._untrackTimer(this._physicsTimer); this._physicsTimer = null; }
-        this._physicsTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 16, () => {
+        this._physicsTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, ARC_FRAME_MS, () => {
             this._offset += this._velocity;
             this._velocity *= ARC_SCROLL_FRICTION;
             const max = Math.max(0, this._groups.length - 1);
@@ -3217,10 +3224,10 @@ class ArcSidebar {
         const frames = Math.max(8, Math.round(Math.abs(targetIdx - start) * 12));
         let frame = 0;
         this._killPhysicsTimer();
-        // EGO-L-007: inlined, not via _killScrollTimer — shexli wants the
+        // EGO-L-007: inlined, not via _killScrollTimer, because shexli wants the
         // remove textually adjacent to this re-arm.
         if (this._scrollTimer) { GLib.source_remove(this._scrollTimer); this._untrackTimer(this._scrollTimer); this._scrollTimer = null; }
-        this._scrollTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 16, () => {
+        this._scrollTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, ARC_FRAME_MS, () => {
             frame++;
             this._offset = start + (targetIdx - start) * (1 - Math.pow(1 - frame / frames, 3));
             this._redraw();
@@ -3331,7 +3338,7 @@ class ArcSidebar {
 }
 
 
-// ─── Main ───────────────────────────────────────────────────────────────────
+// Main
 
 export default class StageManagerExtension extends Extension {
     enable() {
@@ -3345,7 +3352,7 @@ export default class StageManagerExtension extends Extension {
     }
 
     /** Fold the two deprecated maximize switches into maximize-behavior once.
-     *  Workspace wins when both were on — that was the old precedence. */
+     *  Workspace wins when both were on; that was the old precedence. */
     _migrateMaximize() {
         if (this._settings.get_boolean('maximize-migrated')) return;
         if (this._settings.get_boolean('enable-maximize-to-workspace'))

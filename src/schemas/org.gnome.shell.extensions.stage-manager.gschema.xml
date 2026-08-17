@@ -139,7 +139,7 @@
                 <choice value="arc"/>
             </choices>
             <summary>Sidebar Layout</summary>
-            <description>Vertical stack (default) or a full carousel arc layout — see arc-panel-position for which edge it attaches to.</description>
+            <description>Vertical stack (default) or a full carousel arc layout; see arc-panel-position for which edge it attaches to.</description>
         </key>
 
         <key name="arc-angle-step" type="i">

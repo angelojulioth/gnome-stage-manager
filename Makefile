@@ -31,7 +31,7 @@ uninstall:
 
 # Create a distributable zip for GNOME Extensions Store (extensions.gnome.org).
 # NOTE: per EGO-P-006, compiled schemas MUST NOT be shipped for shell-version
-# 45+ — GNOME Shell compiles them at install time. The pack target therefore
+# 45+, because GNOME Shell compiles them at install time. The pack target therefore
 # does NOT depend on `build`, and excludes any *.compiled files defensively.
 pack:
 	@mkdir -p $(DIST_DIR)
@@ -52,7 +52,7 @@ test:
 	@if command -v node >/dev/null 2>&1; then \
 		node tests/build.mjs >/dev/null && node tests/run.mjs; \
 	else \
-		echo "node not found — skipping tests (see tests/README.md)"; \
+		echo "node not found, skipping tests (see tests/README.md)"; \
 	fi
 
 # Regenerate the translation template from the sources.

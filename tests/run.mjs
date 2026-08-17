@@ -59,7 +59,7 @@ function fakeActor() {
     };
 }
 
-/* ═══ #5 — groups must be scoped to the active workspace ═════════════ */
+/* ═══ #5: groups must be scoped to the active workspace ═════════════ */
 
 test('#5 a window mapped on another workspace does not join the active stage', () => {
     const [ws0, ws1] = wsm.reset(2);
@@ -97,7 +97,7 @@ test('#5 swapping stages never touches windows on other workspaces', () => {
         'a window on ws1 was minimized by a stage swap on ws0');
 });
 
-/* ═══ #6 — stage arrangement must survive a workspace round-trip ═════ */
+/* ═══ #6: stage arrangement must survive a workspace round-trip ═════ */
 
 test('#6 separate stages of the same app survive a workspace round-trip', () => {
     const [ws0, ws1] = wsm.reset(2);
@@ -139,7 +139,7 @@ test('#6 the active stage is re-derived correctly for each workspace', () => {
     assert.ok(!active.windows.has(a), 'ws1 active stage must not hold a window from ws0');
 });
 
-/* ═══ #7 — swap guard must not swallow real user minimizes ═══════════ */
+/* ═══ #7: swap guard must not swallow real user minimizes ═══════════ */
 
 test('#7 a user minimize during the swap window still creates a stage card', () => {
     const [ws0] = wsm.reset(1);
@@ -162,7 +162,7 @@ test('#7 a user minimize during the swap window still creates a stage card', () 
 
     const reachable = sidebar._getInactiveGroups().some(g => g.windows.has(b));
     assert.ok(reachable,
-        'user-minimized window is in no inactive stage — unreachable from the sidebar');
+        'user-minimized window is in no inactive stage, unreachable from the sidebar');
 });
 
 test('#7 a stage swap\'s own minimizes never split the outgoing stage', () => {
@@ -181,7 +181,7 @@ test('#7 a stage swap\'s own minimizes never split the outgoing stage', () => {
     const target = sidebar._groups.find(g => g.windows.has(b));
     sidebar._swapToGroup(target);
 
-    // Compositor delivers the swap's signals LATE — after any time-based guard
+    // Compositor delivers the swap's signals LATE, after any time-based guard
     // would have expired.
     clock.advance(1000);
     deliver(sidebar, [a, c, b]);
@@ -250,7 +250,7 @@ test('switching workspace sweeps windows out of stages they left', () => {
     assert.equal(stale.length, 0, 'a ws0 stage still holds a window that moved to ws1');
 });
 
-/* ═══ #3 — show/hide must be interruptible ══════════════════════════ */
+/* ═══ #3: show/hide must be interruptible ══════════════════════════ */
 
 test('#3 hovering the edge during the hide animation re-shows the sidebar', () => {
     wsm.reset(1);
@@ -268,7 +268,7 @@ test('#3 hovering the edge during the hide animation re-shows the sidebar', () =
 
     sidebar._show();
     assert.equal(sidebar._visible, true,
-        '_show() during the hide animation was ignored — sidebar stays hidden');
+        '_show() during the hide animation was ignored; sidebar stays hidden');
     assert.equal(sidebar._panel.targetX, 0, 'panel is not easing back on-screen');
 });
 
@@ -286,7 +286,7 @@ test('#3 hide during the show animation still hides', () => {
     assert.equal(sidebar._panel.targetX, -220, 'panel is not easing off-screen');
 });
 
-/* ═══ #11 — leaving fullscreen restores an always-visible sidebar ════ */
+/* ═══ #11: leaving fullscreen restores an always-visible sidebar ════ */
 
 test('#11 leaving fullscreen restores the sidebar when auto-hide is off', () => {
     wsm.reset(1);
@@ -307,7 +307,7 @@ test('#11 leaving fullscreen restores the sidebar when auto-hide is off', () => 
         'always-visible sidebar did not come back after leaving fullscreen');
 });
 
-/* ═══ #4 — the edge trigger is only live when it is needed ═══════════ */
+/* ═══ #4: the edge trigger is only live when it is needed ═══════════ */
 
 test('#4 the edge trigger is hidden while the sidebar is on screen', () => {
     wsm.reset(1);
@@ -323,7 +323,7 @@ test('#4 the edge trigger is hidden while the sidebar is on screen', () => {
     assert.equal(sidebar._edge.visible, true, 'edge strip must be live once hidden');
 });
 
-/* ═══ #2 — edge dwell: brushing past must not open the sidebar ═══════ */
+/* ═══ #2: edge dwell: brushing past must not open the sidebar ═══════ */
 
 /** Build far enough to get a wired, reactive _edge, with _show() recorded
  *  rather than animated. */
@@ -393,7 +393,7 @@ test('#2 a window going fullscreen during the dwell suppresses the reveal', () =
     assert.equal(sidebar._shown, 0, 'the fullscreen check must be re-run when the timer fires');
 });
 
-/* ═══ #17 — thumbnails keep aspect ratio and drop the CSD shadow ═════ */
+/* ═══ #17: thumbnails keep aspect ratio and drop the CSD shadow ═════ */
 
 test('#17 the whole window is shown, scaled to fit and never cropped', () => {
     wsm.reset(1);
@@ -464,7 +464,7 @@ test('a card never overflows the sidebar, at any stack depth or angle', () => {
     }
 });
 
-/* ═══ bottom position — the stack laid out as a horizontal strip ══════ */
+/* ═══ bottom position: the stack laid out as a horizontal strip ══════ */
 
 const CARD_PAD_Y = 8, STACK_V = 4, ICON_ROW = 22 + 5;
 
@@ -530,7 +530,7 @@ test('bottom: the card strip scrolls horizontally, the column vertically', () =>
     const bottom = makeSidebar(makeSettings({ 'stack-panel-position': 'bottom' }));
     bottom._build();
     assert.equal(bottom._scroll.hscrollbar_policy, St.PolicyType.EXTERNAL,
-        'EXTERNAL, not NEVER — NEVER leaves the adjustment with no range');
+        'EXTERNAL, not NEVER; NEVER leaves the adjustment with no range');
     assert.equal(bottom._scroll.vscrollbar_policy, St.PolicyType.NEVER);
 
     const side = makeSidebar(makeSettings({ 'stack-panel-position': 'left' }));
@@ -566,7 +566,7 @@ test('the pre-fix hardcoded 170px thumbnail really did overflow (regression guar
     const { outer } = cardWidth(220, 170, 3, 22, STACK_H);
     assert.equal(outer, 226);
     assert.ok(outer > 220,
-        'the old geometry should be provably too wide — otherwise this guard is meaningless');
+        'the old geometry should be provably too wide, otherwise this guard is meaningless');
 });
 
 test('cards keep a uniform width regardless of stack depth', () => {
@@ -585,7 +585,7 @@ test('cards keep a uniform width regardless of stack depth', () => {
 test('thumbnails never collapse, and a wider sidebar yields bigger cards', () => {
     wsm.reset(1);
     // Worst case the settings allow: narrowest sidebar, widest angle, deepest
-    // stack. Small is correct here — it is what fits.
+    // stack. Small is correct here; it is what fits.
     const worst = makeSidebar(makeSettings({ 'sidebar-width': 120, 'perspective-angle': 45 }));
     const [w, h] = worst._thumbSize(3);
     assert.ok(w >= 48, `thumbnail collapsed below the safety floor: ${w}px`);
@@ -608,7 +608,7 @@ test('the sidebar is vertically scrollable when the cards overflow', () => {
     // St.PolicyType.NEVER === 2 means "this direction does not scroll", which
     // leaves the adjustment with no range at all.
     assert.notEqual(sidebar._scroll.vscrollbar_policy, 2,
-        'vertical policy is NEVER — overflowing cards can never be reached');
+        'vertical policy is NEVER; overflowing cards can never be reached');
 
     // Content taller than the viewport: a wheel event must move the adjustment.
     sidebar._scroll.setContentHeight(2000, 800);
@@ -658,7 +658,7 @@ test('scrolling works over the blank space between cards', () => {
     assert.ok(adj.value > 0, 'wheel over the gap between cards did not scroll');
 });
 
-test('only the card column is reactive — the panel around it stays click-through', () => {
+test('only the card column is reactive; the panel around it stays click-through', () => {
     wsm.reset(1);
     const sidebar = makeSidebar(makeSettings());
     sidebar._build();
@@ -692,7 +692,7 @@ test('scrolling works from a CARD, not just the scroll view', () => {
     const down = { get_scroll_delta: () => [0, 1], get_scroll_direction: () => 1 };
     card.emit('scroll-event', down);
     assert.ok(adj.value > 0,
-        'a wheel event on a card did not scroll — the handler is only bound to the scroll view');
+        'a wheel event on a card did not scroll; the handler is only bound to the scroll view');
 });
 
 test('a legacy mouse reporting no delta still scrolls by direction', () => {
@@ -828,12 +828,12 @@ test('the 3D rotation is applied to the card, not to the thumbnail inside it', (
 
     sidebar._animateCardsEntrance();
     assert.equal(card.rotation_angle_y, 22,
-        'card is not rotated — the pill background would stay flat while its content tilts');
+        'card is not rotated; the pill background would stay flat while its content tilts');
     assert.equal(thumb.rotation_angle_y, undefined,
         'thumbnail is still rotated independently of the pill that must contain it');
 });
 
-/* ═══ #19 — an empty stage must not produce negative geometry ════════ */
+/* ═══ #19: an empty stage must not produce negative geometry ════════ */
 
 test('#19 a stage with no windows still yields a sanely sized thumbnail', () => {
     wsm.reset(1);
@@ -919,7 +919,7 @@ test('the snapshot cache is bounded and evicts oldest first', () => {
     assert.ok(sidebar._snapshots.has(wins[11]), 'newest entry should be kept');
 });
 
-/* ═══ #4 — stages past the cap are announced, not dropped silently ═══ */
+/* ═══ #4: stages past the cap are announced, not dropped silently ═══ */
 
 test('#4 an overflow marker appears when more stages exist than fit', () => {
     const [ws0] = wsm.reset(1);
@@ -992,7 +992,7 @@ test('the panel is only re-registered as chrome when its struts answer changes',
     assert.equal(sidebar._chromeStruts, false, 'struts released before sliding out');
 });
 
-/* ═══ #8 — unmaximize must return to the origin workspace object ═════ */
+/* ═══ #8: unmaximize must return to the origin workspace object ═════ */
 
 test('#8 unmaximize returns the window to its origin workspace after reindexing', () => {
     const [ws0, ws1, ws2, ws3] = wsm.reset(4);
@@ -1044,7 +1044,7 @@ test('#8 unmaximize still returns the window when the feature is toggled off mid
     } finally { mtw.disable(); }
 });
 
-/* ═══ #9 — disable() tears down every actor and signal source ════════ */
+/* ═══ #9: disable() tears down every actor and signal source ════════ */
 
 test('#9 disable() destroys every actor and disconnects every signal source', () => {
     wsm.reset(1);
@@ -1076,7 +1076,7 @@ test('#9 disable() destroys every actor and disconnects every signal source', ()
     assert.equal(sidebar._sigSources.size, 0, 'signal sources must be cleared after disable()');
 });
 
-/* ═══ #12 — timer bookkeeping must not untrack the wrong id ══════════ */
+/* ═══ #12: timer bookkeeping must not untrack the wrong id ══════════ */
 
 test('#12 a stale timer callback never untracks a different live timer', () => {
     wsm.reset(1);
@@ -1087,7 +1087,7 @@ test('#12 a stale timer callback never untracks a different live timer', () => {
         'splice(-1, 1) removed an unrelated live timer from tracking');
 });
 
-/* ═══ #18 — the render fingerprint must not skip real changes ════════ */
+/* ═══ #18: the render fingerprint must not skip real changes ════════ */
 
 test('#18 refresh is skipped when nothing changed, but not when a stage does', () => {
     const [ws0] = wsm.reset(1);
@@ -1133,7 +1133,7 @@ test('#18 resizing a card\'s window changes the fingerprint (its shape follows i
         'card shape follows the window, so a reshape must invalidate the fingerprint');
 });
 
-/* ═══ all-windows mode — every window, every workspace, read-only ═════ */
+/* ═══ all-windows mode: every window, every workspace, read-only ═════ */
 
 /** A sidebar in all-windows mode with a real _box, ready to render. */
 function allWindowsSidebar(overrides = {}) {
@@ -1157,7 +1157,7 @@ test('all-windows shows windows from every workspace, not just the active one', 
         'expected one card per window across all three workspaces');
 });
 
-test('all-windows includes minimized windows — that is the point of the mode', () => {
+test('all-windows includes minimized windows, which is the point of the mode', () => {
     const [ws0, ws1] = wsm.reset(2);
     wsm.setActive(ws0);
     const parked = new FakeWindow('appParked', { minimized: true });
@@ -1243,7 +1243,7 @@ test('activating from all-windows never minimizes or regroups anything', () => {
     assert.equal(there.minimized, false, 'the target window should be unminimized');
     assert.equal(there.activated, 1, 'the target window should be activated');
     assert.equal(here.minimized, false,
-        'the outgoing window must NOT be minimized — all-windows is read-only');
+        'the outgoing window must NOT be minimized; all-windows is read-only');
     assert.equal(
         JSON.stringify(sidebar._groups.map(g => [...g.windows].map(w => w.get_id()))),
         groupsBefore,
@@ -1284,12 +1284,12 @@ test('_toggleVisible flips the sidebar and respects the master switch', () => {
     sidebar._toggleVisible();
     assert.equal(hidden, 1, 'toggle from visible must hide');
 
-    // Toggling is symmetric — a third press shows again, not a stuck state.
+    // Toggling is symmetric; a third press shows again, not a stuck state.
     sidebar._toggleVisible();
     assert.equal(shown, 2, 'toggle must keep alternating');
 });
 
-/* ═══ app merge/un-merge — grouping fold ═════════════════════════════ */
+/* ═══ app merge/un-merge: grouping fold ═════════════════════════════ */
 
 test('_groupByApp with an empty merge map behaves exactly as before, plus apps/key fields', () => {
     wsm.reset(1);
@@ -1335,7 +1335,7 @@ test('_groupByApp merge fold is transitive-safe: a merge chain still resolves to
     assert.equal(groups[0].apps.length, 3);
 });
 
-/* ═══ app merge/un-merge — persistence ═══════════════════════════════ */
+/* ═══ app merge/un-merge: persistence ═══════════════════════════════ */
 
 test('app-merge-map round-trips through JSON exactly', () => {
     wsm.reset(1);
@@ -1380,7 +1380,7 @@ test('_unmergeGroup clears every member app from the merge map', () => {
     assert.equal(sidebar._appMergeMap.size, 0);
 });
 
-/* ═══ app merge/un-merge — multi-icon rendering ══════════════════════ */
+/* ═══ app merge/un-merge: multi-icon rendering ══════════════════════ */
 
 test('a merged app card shows one icon per member app', () => {
     wsm.reset(1);
@@ -1410,7 +1410,7 @@ test('an unmerged app card still shows exactly one icon (no regression)', () => 
     assert.equal(iconBox.get_children().length, 1);
 });
 
-/* ═══ app merge/un-merge — drag gesture ══════════════════════════════ */
+/* ═══ app merge/un-merge: drag gesture ══════════════════════════════ */
 
 function fakeButtonEvent(button) { return { get_button: () => button }; }
 function fakeMotionEvent(x, y) { return { get_coords: () => [x, y] }; }
@@ -1449,7 +1449,7 @@ test('dragging one app card onto another commits a merge, and does not activate 
     cardA.emit('button-press-event', fakeButtonEvent(1));
     sidebar._onAppDragMotion(fakeMotionEvent(100, 100)); // well past the drag threshold
     // Clutter's implicit grab delivers release to the card that got the press
-    // (cardA), never to whatever the pointer ends up over — so the drop
+    // (cardA), never to whatever the pointer ends up over, so the drop
     // target has to be resolved by hit-testing the live pointer position,
     // which is what stage._actorAtPos stands in for here.
     stage._actorAtPos = cardB;
@@ -1478,8 +1478,8 @@ test('a multi-app drag commits with one settings write, not one per app in the s
 
     sidebar._onDragCommit(source, target);
 
-    // A per-app save (the pre-fix behaviour) would fire twice here — once per
-    // app in the source group — each one a full settings write + sidebar
+    // A per-app save (the pre-fix behaviour) would fire twice here, once per
+    // app in the source group, each one a full settings write + sidebar
     // rebuild for what the user experienced as a single drag gesture.
     assert.equal(saves, 1, 'one drag gesture should trigger exactly one settings write, not one per merged app');
 });
@@ -1515,7 +1515,7 @@ test('starting a new drag cleans up a stale one that never received a release', 
     assert.equal(stage.count, 1, 'starting a new drag must not leak the previous motion-event handler');
 });
 
-/* ═══ ArcSidebar — layout-swap wiring ═════════════════════════════════ */
+/* ═══ ArcSidebar: layout-swap wiring ═════════════════════════════════ */
 
 test('sidebar-layout arc constructs ArcSidebar, not StageSidebar', () => {
     wsm.reset(1);
@@ -1549,7 +1549,7 @@ test('changing sidebar-layout at runtime swaps the active controller', () => {
     ext.disable();
 });
 
-/* ═══ ArcSidebar — _computeGeo() ═══════════════════════════════════════ */
+/* ═══ ArcSidebar: _computeGeo() ═══════════════════════════════════════ */
 
 test('_computeGeo left position: arc center sits off the left edge', () => {
     const settings = makeSettings({ 'arc-panel-position': 'left', 'arc-card-scale': 100 });
@@ -1604,7 +1604,7 @@ test('_computeGeo radius scales normally on a tall workarea (no floor triggered)
     Main.layoutManager.getWorkAreaForMonitor = origGetWA;
 });
 
-/* ═══ ArcSidebar — data model: _buildGroups(), merge/order persistence ═ */
+/* ═══ ArcSidebar: data model: _buildGroups(), merge/order persistence ═ */
 
 test('_buildGroups groups windows by app, one group per app with no merge', () => {
     const [ws0] = wsm.reset(1);
@@ -1702,7 +1702,7 @@ test('_mergeApps key length stays bounded, not doubling per merge', () => {
     for (let i = 1; i <= 8; i++) arc._mergeApps(`app${i}`, 'appRoot');
     const key = arc._mergeMap.get('appRoot');
     assert.ok(key.split('|').length === 9,
-        `expected 9 segments (root + 8), got ${key.split('|').length} — key is compounding`);
+        `expected 9 segments (root + 8), got ${key.split('|').length}; key is compounding`);
 });
 
 test('_loadMergeMap repairs an already-corrupted key from an earlier version', () => {
@@ -1747,7 +1747,7 @@ test('_unmergeApp removes the app and cleans up now-singleton groups', () => {
     assert.ok(!arc._mergeMap.has('appB'), 'the now-singleton former partner should also be cleaned up');
 });
 
-/* ═══ ArcSidebar — card rendering: grid, stack/fan offsets, icon row ═══ */
+/* ═══ ArcSidebar: card rendering: grid, stack/fan offsets, icon row ═══ */
 
 test('_positionStack lays cards at fixed fan-out offsets scaled by grid scale', () => {
     const arc = new ArcSidebar(makeSettings());
@@ -1807,7 +1807,7 @@ test('_buildIconRow adds one icon widget per window in the group', () => {
     assert.equal(container.children.length, 1);
 });
 
-/* ═══ ArcSidebar — _redraw() main render loop ══════════════════════════ */
+/* ═══ ArcSidebar: _redraw() main render loop ══════════════════════════ */
 
 test('_redraw creates one container per group, positioned along the arc', () => {
     const [ws0] = wsm.reset(1);
@@ -1868,7 +1868,7 @@ test('enable()/disable() cycle leaves zero pending card timers and zero tracked 
     assert.equal(clock.pending, 0, 'no timers should remain pending after disable()');
 });
 
-/* ═══ ArcSidebar — drag: merge (outside) vs reorder (inside), un-merge ═ */
+/* ═══ ArcSidebar: drag: merge (outside) vs reorder (inside), un-merge ═ */
 
 test('a press+release below the drag threshold is a plain click (activates the group)', () => {
     const [ws0] = wsm.reset(1);
@@ -1904,7 +1904,7 @@ test('dragging past the threshold and releasing outside the panel merges into th
     arc._onCardPress(container, group, { get_button: () => 1 });
     arc._onDragMotion({ get_coords: () => [9999, 9999] });
     const origGetPointer = global.get_pointer;
-    global.get_pointer = () => [9999, 9999]; // release point — outside the panel rect
+    global.get_pointer = () => [9999, 9999]; // release point, outside the panel rect
     try {
         arc._onCardRelease(container, group, 0, { get_button: () => 1 });
     } finally { global.get_pointer = origGetPointer; }
@@ -1933,7 +1933,7 @@ test('dragging past the threshold and releasing inside the panel reorders instea
     arc._onCardPress(containerA, groupA, { get_button: () => 1 });
     arc._onDragMotion({ get_coords: () => [50, 240] });
     const origGetPointer = global.get_pointer;
-    global.get_pointer = () => [50, 240]; // release point — inside the panel, near containerB
+    global.get_pointer = () => [50, 240]; // release point, inside the panel, near containerB
     try {
         arc._onCardRelease(containerA, groupA, 0, { get_button: () => 1 });
     } finally { global.get_pointer = origGetPointer; }
@@ -1973,7 +1973,7 @@ test('_cancelDrag disconnects the stage motion-event listener and clears drag st
     assert.equal(stage._tracked?.get(arc)?.length ?? 0, 0, 'stage motion-event should be disconnected');
 });
 
-/* ═══ ArcSidebar — momentum scroll, show/hide, persistent mode ════════ */
+/* ═══ ArcSidebar: momentum scroll, show/hide, persistent mode ════════ */
 
 test('scrolling accumulates velocity and starts the physics timer, which decays toward zero', () => {
     const arc = new ArcSidebar(makeSettings({ 'arc-scroll-speed': 10 }));
@@ -2029,7 +2029,7 @@ test('persistent mode auto-shows when no window overlaps the panel, hides again 
     assert.equal(arc._isVisible, false, 'an overlapping window should auto-hide again');
 });
 
-/* ═══ ArcSidebar — keybindings ══════════════════════════════════════── */
+/* ═══ ArcSidebar: keybindings ══════════════════════════════════════── */
 
 test('_addKeybindings binds the shared toggle plus all four arc-specific keys when non-empty', () => {
     const settings = makeSettings({
@@ -2092,16 +2092,16 @@ test('_toggleVisible shows when hidden and hides when visible', () => {
     assert.ok(hidden);
 });
 
-/* ═══ ArcSidebar — _panel must not clip distant-but-visible cards ═════ */
+/* ═══ ArcSidebar: _panel must not clip distant-but-visible cards ═════ */
 
-test('_panel is not clip_to_allocation — cards beyond relIdx=1 legitimately extend past the nominal one-card-wide panel box', () => {
+test('_panel is not clip_to_allocation; cards beyond relIdx=1 legitimately extend past the nominal one-card-wide panel box', () => {
     // On a real 1920x1080 monitor at scale 1 with default settings, arcR
     // (~503px, derived from workarea height) is more than double panelW
-    // (~201px, sized for one card) — a card's x drifts by arcR*(1-cos(angle))
+    // (~201px, sized for one card); a card's x drifts by arcR*(1-cos(angle))
     // as it moves off-center, which already exceeds panelW by relIdx=2-3,
     // well before the angle-based MAX_ANGLE cull would hide it. If the panel
     // clips its own allocation, those still-visible-per-the-cull cards render
-    // as partial slivers or vanish entirely — this is what actually happened
+    // as partial slivers or vanish entirely, which is what actually happened
     // on a real monitor (see conversation), not a hypothetical.
     const arc = new ArcSidebar(makeSettings());
     arc._scaleFactor = 1;
@@ -2113,7 +2113,7 @@ test('_panel is not clip_to_allocation — cards beyond relIdx=1 legitimately ex
     arc._destroyUI();
 });
 
-/* ═══ ArcSidebar — the same edge dwell as the stack layout (#2) ════════ */
+/* ═══ ArcSidebar: the same edge dwell as the stack layout (#2) ════════ */
 
 function arcEdgeSidebar(delay) {
     const arc = new ArcSidebar(makeSettings({ 'edge-trigger-delay': delay }));
@@ -2155,7 +2155,7 @@ test('arc: a delay of 0 keeps the original instant reveal', () => {
     arc._destroyUI();
 });
 
-/* ═══ #10 — opt-in maximize-to-new-stage ═══════════════════════════════ */
+/* ═══ #10: opt-in maximize-to-new-stage ═══════════════════════════════ */
 
 /** ws0 active with three windows in one stage; `a` is the one to maximize. */
 function maxGroupSidebar(overrides = {}) {

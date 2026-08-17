@@ -7,3 +7,5 @@ node_modules/
 CLAUDE.md
 tests/ext-under-test.mjs
 ref/
+.superpowers/
+.venv/

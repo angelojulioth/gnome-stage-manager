@@ -9,38 +9,38 @@ msgstr ""
 "Project-Id-Version: Stage Manager 2.0.4\n"
 "Report-Msgid-Bugs-To: https://github.com/itsdigvijaysing/gnome-stage-manager/"
 "issues\n"
-"POT-Creation-Date: 2026-08-09 02:38+0530\n"
+"POT-Creation-Date: 2026-08-18 00:06+0530\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
 "MIME-Version: 1.0\n"
-"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Type: text/plain; charset=CHARSET\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=INTEGER; plural=EXPRESSION;\n"
 
-#: src/extension.js:1488 src/extension.js:1918
+#: src/extension.js:1495 src/extension.js:1923
 #, javascript-format
 msgid "Workspace %d"
 msgstr ""
 
-#: src/extension.js:1917
+#: src/extension.js:1922
 #, javascript-format
 msgid "Workspace %d (current)"
 msgstr ""
 
-#: src/extension.js:1926
+#: src/extension.js:1931
 #, javascript-format
 msgid "%d window"
 msgid_plural "%d windows"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/extension.js:2140
+#: src/extension.js:2142
 msgid "Application"
 msgstr ""
 
-#: src/extension.js:2160
+#: src/extension.js:2162
 #, javascript-format
 msgid "%d window (minimized)"
 msgid_plural "%d windows (minimized)"
@@ -208,8 +208,8 @@ msgstr ""
 
 #: src/prefs.js:191
 msgid ""
-"No shortcut is set by default. Click Set to choose one — it takes effect "
-"immediately, no restart needed."
+"No shortcut is set by default. Click Set to choose one, and it takes effect "
+"immediately with no restart needed."
 msgstr ""
 
 #: src/prefs.js:196
@@ -706,7 +706,7 @@ msgstr ""
 
 #: src/schemas/org.gnome.shell.extensions.stage-manager.gschema.xml:142
 msgid ""
-"Vertical stack (default) or a full carousel arc layout — see arc-panel-"
+"Vertical stack (default) or a full carousel arc layout; see arc-panel-"
 "position for which edge it attaches to."
 msgstr ""
 

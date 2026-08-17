@@ -1,4 +1,4 @@
-/* Stage Manager — theme-aware styles.
+/* Stage Manager: theme-aware styles.
  * GNOME Shell auto-loads this file from the extension root.
  *
  * Defaults are dark (matches Adwaita-dark). The .light style class is
@@ -6,7 +6,7 @@
  * to swap to a light surface treatment.
  */
 
-/* ─── Scrollbar ─────────────────────────────────────────────────── */
+/* Scrollbar */
 
 StScrollBar StButton#vhandle {
     background-color: rgba(255, 255, 255, 0.15);
@@ -18,7 +18,7 @@ StScrollBar StButton#vhandle:hover {
     background-color: rgba(255, 255, 255, 0.25);
 }
 
-/* ─── Card pill ─────────────────────────────────────────────────── */
+/* Card pill */
 
 .stage-card {
     padding: 8px 14px;
@@ -31,7 +31,7 @@ StScrollBar StButton#vhandle:hover {
     background-color: rgba(45, 45, 55, 0.7);
 }
 
-/* ─── Thumbnail layers ──────────────────────────────────────────── */
+/* Thumbnail layers */
 
 .stage-thumb-layer {
     border-radius: 12px;
@@ -49,7 +49,7 @@ StScrollBar StButton#vhandle:hover {
     box-shadow: 0 4px 20px rgba(120, 140, 255, 0.18);
 }
 
-/* ─── Preview popup ─────────────────────────────────────────────── */
+/* Preview popup */
 
 .stage-preview {
     background-color: rgba(22, 22, 26, 0.94);
@@ -68,7 +68,7 @@ StScrollBar StButton#vhandle:hover {
     font-size: 10px;
 }
 
-/* ─── Misc card chrome ──────────────────────────────────────────── */
+/* Misc card chrome */
 
 .stage-badge {
     background-color: rgba(100, 120, 220, 0.85);
@@ -114,7 +114,7 @@ StScrollBar StButton#vhandle:hover {
     font-weight: bold;
 }
 
-/* ─── Light theme overrides ─────────────────────────────────────── */
+/* Light theme overrides */
 
 .stage-card.light {
     background-color: rgba(255, 255, 255, 0.65);

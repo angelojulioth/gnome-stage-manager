@@ -27,10 +27,10 @@ src = src.replace(importRe, (_m, def, star, named) => {
 });
 
 if (stripped === 0)
-    throw new Error('tests/build.mjs: no gi:// or resource:/// imports matched — has src/extension.js changed shape?');
+    throw new Error('tests/build.mjs: no gi:// or resource:/// imports matched. Has src/extension.js changed shape?');
 
 // The top-level class is a default export in the real source (required by the
-// GNOME Shell extension loader) — re-declare it as a named class here so it
+// GNOME Shell extension loader). Re-declare it as a named class here so it
 // can be re-exported alongside everything else in one footer line.
 src = src.replace(/^export default class StageManagerExtension/m, 'class StageManagerExtension');
 

@@ -12,7 +12,7 @@ export const Meta = {
 
 /**
  * Enough of ClutterActor for the card/thumbnail builders to run: geometry
- * setters, a child list, and destruction. Not a layout engine — width/height are
+ * setters, a child list, and destruction. Not a layout engine; width/height are
  * whatever was last set, which is all the thumbnail maths depends on.
  */
 class FakeActor {
@@ -26,7 +26,7 @@ class FakeActor {
     }
     set_size(w, h) { this.width = w; this.height = h; }
     get_size() { return [this.width, this.height]; }
-    // Natural size == set size in this fake — there's no real CSS/layout
+    // Natural size == set size in this fake; there's no real CSS/layout
     // engine, so "preferred" and "allocated" are the same thing here.
     get_preferred_size() { return [this.width, this.height, this.width, this.height]; }
     set_position(x, y) { this.x = x; this.y = y; }
@@ -91,7 +91,7 @@ export const Clutter = {
     ActorAlign: { CENTER: 0, START: 1 },
     AnimationMode: { EASE_OUT_QUAD: 0, EASE_OUT_CUBIC: 1 },
     Orientation: { HORIZONTAL: 0, VERTICAL: 1 },
-    // Real Clutter values — SMOOTH must not collide with UP/DOWN or the
+    // Real Clutter values: SMOOTH must not collide with UP/DOWN or the
     // delta-vs-direction branch in _onScrollEvent() is untested.
     ScrollDirection: { UP: 0, DOWN: 1, LEFT: 2, RIGHT: 3, SMOOTH: 4 },
     PickMode: { REACTIVE: 0, ALL: 1 },
@@ -149,7 +149,7 @@ class Clock {
     add(ms, cb) { const id = this.next++; this.timers.set(id, { at: this.now + ms, ms, cb }); return id; }
     // Real GLib tolerates a source removing itself while its own callback is
     // still dispatching (e.g. _hidePanel() calling _cancelHide() on the very
-    // hide-timer whose callback invoked it) — only a *stale* id from an
+    // hide-timer whose callback invoked it); only a *stale* id from an
     // earlier, already-finished tick is a genuine bug worth throwing on.
     remove(id) {
         if (this._dispatching.has(id)) return;
@@ -158,7 +158,7 @@ class Clock {
         this.timers.delete(id);
     }
     // A callback returning GLib.SOURCE_CONTINUE (true) is re-armed under the
-    // same id at now+ms, mirroring a real repeating GLib.timeout_add — the
+    // same id at now+ms, mirroring a real repeating GLib.timeout_add; the
     // snapshot in [...this.timers] means a timer re-armed mid-loop can't
     // refire within the same advance() call.
     advance(ms) {
@@ -194,7 +194,7 @@ let winSeq = 0;
 export class FakeWindow {
     /**
      * `actor` opts a window into having a compositor actor, so the thumbnail and
-     * snapshot paths can be exercised. `frame` is the window frame inside it —
+     * snapshot paths can be exercised. `frame` is the window frame inside it,
      * the gap between the two is the CSD shadow margin that must be trimmed.
      */
     constructor(appId, {
@@ -399,7 +399,7 @@ export class Extension {
 }
 
 // The real ones resolve the domain through the shell's extension registry, which
-// does not exist here. Identity is enough — the tests assert behaviour, not
+// does not exist here. Identity is enough; the tests assert behaviour, not
 // translations.
 export const gettext = s => s;
 export const ngettext = (s, plural, n) => (n === 1 ? s : plural);
@@ -491,7 +491,7 @@ export function installGlobals() {
             },
         }),
         stage: Object.assign(stage, {
-            // Tests drive this by setting stage._actorAtPos directly — there's
+            // Tests drive this by setting stage._actorAtPos directly; there's
             // no real geometry in this fake, so it can't hit-test from x/y.
             get_actor_at_pos: () => stage._actorAtPos ?? null,
         }),
